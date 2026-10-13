@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Стенд импортёра</title>
+<style>
+  /* Dev-only stand: runs the real extension UI with synthetic data. Page styles below
+     are deliberately hostile to check that the shadow root isolates the importer. */
+  body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 1px 1px, #d9dce1 1px, transparent 0) 0 0 / 20px 20px, #f4f5f7; font: 13px/1.2 Georgia, serif; }
+  button { font: 700 20px Georgia, serif !important; text-transform: uppercase; letter-spacing: 2px; }
+  .bar { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px; background: #fff; border-bottom: 1px solid #e5e5e5; }
+  .bar a { padding: 4px 10px; border: 1px solid #e5e5e5; border-radius: 99px; color: #0a0a0a; text-decoration: none; font: 500 12px system-ui, sans-serif; }
+  .help { position: fixed; right: 24px; bottom: 32px; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .12); color: #737373; font: 600 14px system-ui; }
+</style>
+</head>
+<body>
+<nav class="bar">
+  <a href="?">Кнопка</a><a href="?s=pick">Файл</a><a href="?s=invalid">Не тот файл</a><a href="?s=review">Проверка</a><a href="?s=review&classes=off">Проверка без классов</a><a href="?s=review&classes=reimport">Повторный импорт</a><a href="?s=review&classes=choice">Выбор по классам</a><a href="?s=review&classes=big">Много классов</a>
+  <a href="?s=run">Импорт → успех</a><a href="?s=run&fail=upload">Импорт → ошибка</a><a href="?s=run&fail=confirm">Импорт → не подтверждено</a>
+</nav>
+<span class="help">?</span>
+<script>
+const bust = `?v=${Date.now()}`;
+const uiScript = document.createElement('script');
+uiScript.src = `../../extension/editor/import-ui.js${bust}`;
+uiScript.onload = () => start();
+document.head.append(uiScript);
+function start() {
+const q = new URLSearchParams(location.search);
+const font = new FontFace('TT Inter', 'url(../../extension/fonts/InterVariable.woff2) format("woff2")', { weight: '100 900' });
+document.fonts.add(font);
+const host = document.createElement('taptop-toolkit-importer');
+host.style.visibility = 'hidden';
+const root = host.attachShadow({ mode: 'open' });
+const link = document.createElement('link');
+link.rel = 'stylesheet'; link.href = `../../extension/editor/import-ui.css${bust}`;
+link.onload = () => host.style.removeProperty('visibility');
+root.append(link);
+document.body.append(host);
+
+const names = ['hero__media', 'hero__text', 'hero__actions', 'hero__badge', 'hero__stat', 'hero__grid', 'hero__note', 'hero__logo', 'hero__caption'];
+const classSets = {
+  off: { available: false, total: 12 },
+  first: { available: true, total: 12, created: names, updated: [], unchanged: [], adopt: [], conflicts: [], copies: [{ name: 'hero', copy: 'hero-2' }, { name: 'hero__title', copy: 'hero__title-2' }, { name: 'button-primary', copy: 'button-primary-2' }] },
+  reimport: { available: true, total: 12, created: ['hero__badge'], updated: [{ name: 'hero', properties: ['padding-top', 'gap'] }, { name: 'hero__title', properties: ['font-size'] }], unchanged: names.slice(0, 9), adopt: [], conflicts: [], copies: [] },
+  big: { available: true, total: 80,
+    created: ['kit-backdrop', 'kit-group--last', 'kit-grid--3', 'kit-type-row--display', 'kit-type-row--heading', 'kit-stack', 'kit-token-preview', 'kit-radius-40', 'kit-color-white', 'kit-color-border', 'kit-color-text-light', 'kit-columns'],
+    updated: ['kit', 'kit-sidebar', 'kit-brand-name', 'kit-brand-meta', 'kit-nav-title', 'kit-nav-link', 'kit-sidebar-note', 'kit-topbar', 'kit-topbar-name', 'kit-burger', 'kit-burger-line', 'kit-main', 'kit-hero', 'kit-eyebrow', 'kit-title', 'kit-lead', 'kit-section', 'kit-section-title', 'kit-section-text', 'kit-subtitle', 'kit-caption', 'kit-panel', 'kit-row', 'kit-tokens', 'kit-token', 'kit-token-body', 'kit-token-name', 'kit-type-list', 'kit-type-row', 'kit-type-class'].map((name, i) => ({ name, properties: i % 3 ? ['color'] : ['font-weight', 'letter-spacing', 'line-height'] })),
+    unchanged: Array.from({ length: 36 }, (_, i) => `role-${i}`), adopt: [],
+    conflicts: [{ name: 'kit-swatch', properties: ['border-radius'] }, { name: 'kit-ramp', properties: ['background-color'] }], copies: [] },
+  choice: { available: true, total: 12, created: names.slice(0, 7), updated: [{ name: 'hero', properties: ['gap'] }], unchanged: [], adopt: ['card', 'button-primary'], conflicts: [{ name: 'hero__title', properties: ['font-size', 'color'] }], copies: [] }
+};
+const report = {
+  ok: true,
+  summary: { nodes: 24, classes: 12, instances: 1, assets: 4 },
+  classes: classSets[q.get('classes') || 'first']
+};
+const wait = ms => new Promise(r => setTimeout(r, ms));
+async function onImport(file, ui, decisions) {
+  console.log('decisions', JSON.stringify(decisions));
+  for (let i = 1; i <= 4; i++) {
+    ui.setProgress('uploading', { done: i - 1, total: 4 });
+    await wait(700);
+    if (q.get('fail') === 'upload' && i === 3) { const e = new Error('Taptop did not confirm image upload (500)'); e.code = 'UPLOAD_FAILED'; e.retryable = true; throw e; }
+  }
+  ui.setProgress('uploading', { done: 4, total: 4 });
+  await wait(500);
+  ui.setProgress('syncing-classes'); await wait(900);
+  ui.setProgress('inserting'); await wait(1200);
+  ui.setProgress('confirming'); await wait(900);
+  if (q.get('fail') === 'confirm') { const e = new Error('Taptop did not confirm the inserted layer'); e.code = 'CONFIRMATION_FAILED'; e.retryable = true; throw e; }
+  ui.complete({ rootTagId: 'root-1', mediaBindings: [] });
+}
+const ui = TaptopImporterUI.createImporterUI({
+  root, backendAvailable: true,
+  onFileSelected: async file => { await wait(300); return /bad/.test(file.name) ? { ok: false, errors: ['Unsupported package type'] } : report; },
+  onImport, onRetry: onImport
+});
+window.ui = ui;
+
+const s = q.get('s');
+const fakeFile = name => new File(['{}'], name, { type: 'application/json' });
+async function drop(name) {
+  const zone = root.querySelector('.tt-dropzone');
+  const dt = new DataTransfer(); dt.items.add(fakeFile(name));
+  zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+  await wait(400);
+}
+(async () => {
+  await document.fonts.ready;
+  if (!s) return;
+  ui.show();
+  if (s === 'invalid') await drop('photo.png');
+  if (s === 'review' || s === 'run') await drop('hero-section.json');
+  if (s === 'run') root.querySelector('[data-action="import"]').click();
+  if (q.get('open')) { await wait(50); root.querySelector('.tt-change-group')?.setAttribute('open', ''); }
+})();
+}
+</script>
+</body>
+</html>

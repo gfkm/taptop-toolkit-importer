@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "packageVersion": 2,
+  "producerToolkitVersion": "0.2.0-alpha.1",
+  "files": [
+    {
+      "path": "import-sync/embedded-asset.schema.json",
+      "sha256": "5404c56d3bfc1b9898b3c54f710b7d0ad4e811c5b44ddeae53b09f4f25e4a847"
+    },
+    {
+      "path": "import-sync/identity-manifest.schema.json",
+      "sha256": "28f690b4d30bf195d813a852f6f348d6a73faa33239d25278f0b05630ac0819b"
+    },
+    {
+      "path": "import-sync/package.schema.json",
+      "sha256": "18858238c4ec2a2ecb5be1aab57e5797821eb12cc878dba578d7d12e0d6e4043"
+    },
+    {
+      "path": "import-sync/receipt.schema.json",
+      "sha256": "c47b2d3f4ab2c726f24d7ba6aee8a8b02f7cecc4482d1b8c461896a68fed6fe4"
+    }
+  ],
+  "importerVersion": "0.2.0"
+}

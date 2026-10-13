@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Импорт JSON — прототип</title>
+<style>
+/* Прототип флоу импорта. Значения компонентов — shadcn radix-maia (bbVK0Gm),
+   поверх них решения Toolkit: Inter, светлая тема, Taptop blue. Данные синтетические. */
+@font-face { font-family: Inter; src: url('../../../extension/fonts/InterVariable.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+
+:root {
+  /* Neutral (shadcn) */
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --muted: #f5f5f5;
+  --muted-foreground: #737373;
+  --border: #e5e5e5;
+  --overlay: rgb(10 10 10 / .24);
+  /* Toolkit */
+  --primary: #3290ff;
+  --primary-hover: rgb(50 144 255 / .8);
+  --primary-soft: #eaf4ff;
+  --primary-foreground: #ffffff;
+  --ring: rgb(50 144 255 / .5);
+  --destructive: #e7000b;
+  --destructive-soft: rgb(231 0 11 / .1);
+  --success: #16a34a;
+  --success-soft: #f0fdf4;
+  --warning: #b45309;
+  --warning-soft: #fffbeb;
+  /* radius medium: --radius 10px */
+  --radius-lg: 10px;
+  --radius-2xl: 18px;
+  --radius-4xl: 26px;
+  --duration: 150ms;
+  --ease-out: cubic-bezier(.23, 1, .32, 1);
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; min-height: 100vh; color: var(--foreground); background: #eceef1; font-size: 14px; }
+svg { display: block; }
+.icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+/* ---- Переключатель состояний прототипа (не часть UI) ---- */
+.proto-bar { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 16px; background: rgb(255 255 255 / .9); border-bottom: 1px solid var(--border); backdrop-filter: blur(8px); }
+.proto-bar b { width: 100%; font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
+.proto-bar button { height: 24px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-4xl); background: var(--background); color: var(--foreground); font: 500 12px/1 Inter, sans-serif; cursor: pointer; }
+.proto-bar button[aria-pressed="true"] { background: var(--foreground); border-color: var(--foreground); color: var(--background); }
+
+/* ---- Имитация редактора ---- */
+.editor { position: relative; height: calc(100vh - 82px); min-height: 640px; overflow: hidden; background: radial-gradient(circle at 1px 1px, #d9dce1 1px, transparent 0) 0 0 / 20px 20px, #f4f5f7; }
+.native-help { position: absolute; right: 24px; bottom: 32px; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .12); color: var(--muted-foreground); font-weight: 600; }
+
+/* ---- Launcher: Button icon-lg (size-10) + Tooltip ---- */
+.launcher { position: absolute; right: 24px; bottom: 88px; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; color: var(--primary-foreground); background: var(--primary); box-shadow: 0 4px 12px rgb(50 144 255 / .35); cursor: pointer; outline: none; transition: background var(--duration), transform var(--duration) var(--ease-out); }
+.launcher:hover { background: #2b86f0; }
+.launcher:active { transform: scale(.96); }
+.launcher:focus-visible { box-shadow: 0 0 0 3px var(--ring); }
+.launcher .icon { width: 18px; height: 18px; }
+.tooltip { position: absolute; right: 72px; bottom: 96px; padding: 6px 12px; border-radius: var(--radius-2xl); background: var(--foreground); color: var(--background); font-size: 12px; white-space: nowrap; opacity: 0; transform: translateX(4px); pointer-events: none; transition: opacity var(--duration), transform var(--duration) var(--ease-out); }
+.launcher:hover + .tooltip, .launcher:focus-visible + .tooltip { opacity: 1; transform: none; }
+
+/* ---- Dialog (Maia) ---- */
+.overlay { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; padding: 16px; background: var(--overlay); backdrop-filter: blur(1px); }
+.overlay[hidden] { display: none; }
+.dialog { position: relative; display: grid; gap: 24px; width: 100%; max-width: 448px; max-height: calc(100% - 32px); overflow-y: auto; padding: 24px; border-radius: var(--radius-4xl); background: var(--background); box-shadow: 0 0 0 1px rgb(10 10 10 / .05); font-size: 14px; animation: dialog-in 150ms var(--ease-out); }
+@keyframes dialog-in { from { opacity: 0; transform: scale(.95); } }
+.dialog-header { display: grid; gap: 8px; padding-right: 32px; }
+.dialog-title { margin: 0; font-size: 16px; line-height: 1; font-weight: 500; }
+.dialog-description { margin: 0; color: var(--muted-foreground); line-height: 1.43; }
+.dialog-close { position: absolute; top: 16px; right: 16px; }
+.dialog-footer { display: flex; justify-content: flex-end; gap: 8px; }
+.dialog-footer.split > .btn { flex: 1; }
+.dialog-footer.center { justify-content: center; }
+.dialog-footer.center > .btn { min-width: 160px; }
+.dialog-footer .hint { margin-right: auto; align-self: center; color: var(--muted-foreground); font-size: 12px; }
+.step { display: grid; gap: 24px; animation: step-in 200ms var(--ease-out); }
+@keyframes step-in { from { opacity: 0; transform: translateY(4px); } }
+
+/* ---- Button (Maia) ---- */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 12px; border: 1px solid transparent; border-radius: var(--radius-4xl); font: 500 14px/1 Inter, sans-serif; white-space: nowrap; cursor: pointer; outline: none; transition: background var(--duration), color var(--duration), box-shadow var(--duration); }
+.btn:focus-visible { box-shadow: 0 0 0 3px var(--ring); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:disabled { opacity: .5; pointer-events: none; }
+.btn-primary { background: var(--primary); color: var(--primary-foreground); }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-outline { border-color: var(--border); background: rgb(229 229 229 / .3); color: var(--foreground); }
+.btn-outline:hover { background: rgb(229 229 229 / .5); }
+.btn-ghost { background: transparent; color: var(--foreground); }
+.btn-ghost:hover { background: var(--muted); }
+.btn-sm { height: 32px; padding: 0 12px; }
+.btn-icon { width: 32px; height: 32px; padding: 0; color: var(--muted-foreground); }
+.btn-icon:hover { color: var(--foreground); }
+
+/* ---- Dropzone (Empty, dashed) ---- */
+.dropzone { display: grid; justify-items: center; gap: 16px; padding: 40px 24px; border: 1.5px dashed var(--border); border-radius: var(--radius-2xl); text-align: center; cursor: pointer; outline: none; transition: border-color var(--duration), background var(--duration); }
+.dropzone:hover, .dropzone.is-over { border-color: var(--primary); background: var(--primary-soft); }
+.dropzone:focus-visible { box-shadow: 0 0 0 3px var(--ring); }
+.dropzone[data-invalid] { border-color: rgb(231 0 11 / .45); background: rgb(231 0 11 / .04); animation: shake 320ms var(--ease-out); }
+.dropzone[data-invalid] .media, .dropzone[data-invalid]:hover .media { background: var(--background); color: var(--destructive); box-shadow: 0 0 0 1px rgb(231 0 11 / .15); }
+.dropzone[data-invalid]:hover, .dropzone[data-invalid].is-over { border-color: var(--destructive); background: rgb(231 0 11 / .06); }
+.dropzone[data-invalid]:hover .media, .dropzone[data-invalid].is-over .media { background: var(--background); color: var(--destructive); }
+.dropzone-text strong { color: var(--foreground); font-weight: 500; }
+@keyframes shake { 20% { transform: translateX(-4px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-2px); } 80% { transform: translateX(2px); } }
+.media { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--muted); color: var(--foreground); }
+.media .icon { width: 22px; height: 22px; }
+.dropzone:hover .media, .dropzone.is-over .media { background: #fff; color: var(--primary); }
+.dropzone-title { font-size: 16px; font-weight: 500; letter-spacing: -.01em; }
+.dropzone-text { margin-top: 6px; color: var(--muted-foreground); line-height: 1.5; }
+.link { color: var(--primary); font-weight: 500; }
+
+/* ---- Alert (Maia) ---- */
+.alert { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); line-height: 1.43; }
+.alert .icon { grid-row: span 2; margin-top: 2px; }
+.alert-title { font-weight: 500; }
+.alert-text { color: var(--muted-foreground); }
+.alert[data-tone="error"] { color: var(--destructive); }
+.alert[data-tone="error"] .alert-text { color: rgb(231 0 11 / .9); }
+.alert[data-tone="warning"] { border-color: #fde68a; background: var(--warning-soft); color: var(--warning); }
+.alert[data-tone="warning"] .alert-text { color: var(--warning); }
+
+/* ---- Item / ItemGroup (Maia) ---- */
+.items { display: grid; gap: 8px; }
+.item { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-2xl); }
+.item-muted { border-color: transparent; background: rgb(245 245 245 / .6); }
+.item .media { width: 32px; height: 32px; background: var(--background); }
+.item .media .icon { width: 16px; height: 16px; }
+.item-muted .media { box-shadow: 0 0 0 1px var(--border); }
+.item-content { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.item-title { overflow: hidden; font-weight: 500; line-height: 1.375; text-overflow: ellipsis; white-space: nowrap; }
+.item-text { color: var(--muted-foreground); line-height: 1.43; }
+.changes { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-2xl); }
+.change { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.change + .change, .change + details, details + .change { border-top: 1px solid var(--border); }
+.change > .icon { color: var(--muted-foreground); }
+.change-label { flex: 1; }
+.change-value { color: var(--muted-foreground); }
+.change-value strong { color: var(--foreground); font-weight: 500; }
+details > summary { list-style: none; cursor: pointer; outline: none; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary:focus-visible { box-shadow: inset 0 0 0 2px var(--ring); }
+details > summary:hover { background: rgb(245 245 245 / .6); }
+.chevron { color: var(--muted-foreground); transition: transform var(--duration) var(--ease-out); }
+details[open] .chevron { transform: rotate(180deg); }
+.class-list { display: grid; gap: 2px; max-height: 172px; margin: 0; padding: 0 14px 12px 42px; overflow-y: auto; list-style: none; overscroll-behavior: contain; }
+.class-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; font-size: 13px; }
+.class-list code { font: 500 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.class-list .diff { color: var(--muted-foreground); font-size: 12px; }
+.class-note { margin: 0 14px 12px 42px; color: var(--warning); font-size: 12px; line-height: 1.5; }
+
+/* ---- Badge (Maia) ---- */
+.badge { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--radius-4xl); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.badge-new { background: var(--primary-soft); color: #1f6fd1; }
+.badge-update { background: var(--warning-soft); color: var(--warning); }
+
+/* ---- Progress (Maia) ---- */
+.run > .progress { width: 100%; }
+.checklist .count { margin-left: auto; color: var(--muted-foreground); font-weight: 400; font-variant-numeric: tabular-nums; }
+.progress { position: relative; height: 12px; overflow: hidden; border-radius: var(--radius-4xl); background: var(--muted); }
+.progress-value { position: absolute; inset: 0; background: var(--primary); border-radius: inherit; transform: translateX(-100%); transition: transform 400ms var(--ease-out); }
+
+/* ---- Морфинг-лоадер ---- */
+.run { display: grid; justify-items: center; gap: 20px; padding: 8px 0 4px; text-align: center; }
+.morph-wrap { position: relative; display: grid; place-items: center; width: 72px; height: 72px; }
+.morph-halo { position: absolute; inset: 0; border-radius: 50%; background: var(--primary); opacity: .12; animation: halo 2.4s var(--ease-out) infinite; }
+.morph { width: 40px; height: 40px; background: var(--primary); animation: morph 2.4s cubic-bezier(.65, 0, .35, 1) infinite; }
+@keyframes morph {
+  0%, 100% { border-radius: 50%; transform: rotate(0) scale(1); }
+  25% { border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%; transform: rotate(90deg) scale(.92); }
+  50% { border-radius: 12px; transform: rotate(180deg) scale(.82); }
+  75% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: rotate(270deg) scale(.92); }
+}
+@keyframes halo { 0% { transform: scale(.6); opacity: .22; } 100% { transform: scale(1.15); opacity: 0; } }
+.result-mark { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; animation: settle 420ms var(--ease-out); }
+.result-mark .icon { width: 26px; height: 26px; stroke-width: 2.5; }
+.result-mark[data-tone="success"] { background: var(--success-soft); color: var(--success); }
+.result-mark[data-tone="success"] .icon path { stroke-dasharray: 24; stroke-dashoffset: 24; animation: draw 360ms 160ms var(--ease-out) forwards; }
+.result-mark[data-tone="error"] { background: var(--destructive-soft); color: var(--destructive); }
+.result-mark[data-tone="warning"] { background: var(--warning-soft); color: var(--warning); }
+@keyframes settle { 0% { border-radius: 12px; transform: rotate(-90deg) scale(.7); background: var(--primary); } 60% { transform: rotate(0) scale(1.06); } }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.run-title { margin: 0; font-size: 18px; font-weight: 500; letter-spacing: -.02em; }
+.run-text { margin: 6px 0 0; color: var(--muted-foreground); line-height: 1.5; }
+.run-progress { display: grid; gap: 8px; width: 100%; }
+.run-progress-meta { display: flex; justify-content: space-between; color: var(--muted-foreground); font-size: 12px; font-variant-numeric: tabular-nums; }
+.checklist { display: grid; gap: 10px; width: 100%; margin: 0; padding: 0; list-style: none; text-align: left; }
+.checklist li { display: flex; align-items: center; gap: 10px; color: var(--muted-foreground); transition: color var(--duration); }
+.checklist li[data-state="active"] { color: var(--foreground); font-weight: 500; }
+.checklist li[data-state="done"] { color: var(--foreground); }
+.dot { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--border); }
+.checklist li[data-state="active"] .dot { box-shadow: inset 0 0 0 2px var(--primary); animation: pulse 1.2s ease-in-out infinite; }
+.checklist li[data-state="done"] .dot { background: var(--primary); box-shadow: none; color: #fff; }
+.dot .icon { width: 12px; height: 12px; stroke-width: 3; opacity: 0; }
+.checklist li[data-state="done"] .dot .icon { opacity: 1; }
+@keyframes pulse { 50% { box-shadow: inset 0 0 0 5px rgb(50 144 255 / .35); } }
+.spin { animation: spin 900ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* ---- Загрузка · A · Кольцо ---- */
+.ring { position: relative; width: 112px; height: 112px; }
+.ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 8; }
+.ring-track { stroke: var(--muted); }
+.ring-value { stroke: var(--primary); stroke-linecap: round; transition: stroke-dashoffset 500ms var(--ease-out); }
+.ring-core { position: absolute; inset: 0; display: grid; place-items: center; font-size: 24px; font-weight: 500; letter-spacing: -.02em; }
+.ring-core small { font-size: 14px; color: var(--muted-foreground); font-weight: 400; }
+.phase-title { position: relative; display: grid; height: 22px; overflow: hidden; }
+.phase-text { grid-area: 1 / 1; white-space: nowrap; animation: phase-in 300ms var(--ease-out); }
+.phase-text[data-leaving] { animation: phase-out 300ms var(--ease-out) forwards; }
+.phase-count { color: var(--muted-foreground); }
+@keyframes phase-in { from { opacity: 0; transform: translateY(14px); filter: blur(2px); } }
+@keyframes phase-out { to { opacity: 0; transform: translateY(-14px); filter: blur(2px); } }
+.phase-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: var(--radius-4xl); background: var(--muted); font-weight: 500; }
+.phase-pill .icon { width: 14px; height: 14px; color: var(--primary); }
+.phase-pill [data-count] { color: var(--muted-foreground); font-weight: 400; }
+
+/* ---- Загрузка · B · Сборка ---- */
+.assemble { display: grid; place-items: center; height: 168px; border-radius: var(--radius-2xl); background: rgb(245 245 245 / .6); }
+.mock { position: relative; display: grid; gap: 10px; width: 232px; padding: 14px; border-radius: 14px; background: var(--background); box-shadow: 0 0 0 1px var(--border), 0 6px 16px rgb(0 0 0 / .05); transition: box-shadow 300ms var(--ease-out); }
+.mock[data-step="2"], .mock[data-step="3"] { box-shadow: 0 0 0 1.5px var(--primary), 0 8px 20px rgb(50 144 255 / .15); }
+.mock-bar { width: 42%; height: 8px; border-radius: 4px; background: var(--foreground); opacity: .85; }
+.mock-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.mock-tile { display: grid; place-items: center; height: 40px; border-radius: 8px; background: linear-gradient(90deg, #f0f0f0 25%, #fafafa 50%, #f0f0f0 75%) 0 0 / 200% 100%; animation: shimmer 1.4s linear infinite; }
+.mock-tile .icon { width: 14px; height: 14px; opacity: 0; transform: scale(.6); transition: opacity 250ms, transform 300ms var(--ease-out); }
+.mock-tile[data-ready] { background: var(--primary-soft); color: var(--primary); animation: none; }
+.mock-tile[data-ready] .icon { opacity: 1; transform: none; }
+.mock-line { height: 6px; border-radius: 3px; background: var(--border); opacity: 0; transform: translateY(6px); transition: opacity 300ms, transform 400ms var(--ease-out); }
+.mock-line:nth-of-type(2) { transition-delay: 120ms; width: 72%; }
+.mock-line:nth-of-type(3) { transition-delay: 240ms; width: 54%; }
+.mock[data-step="2"] .mock-line, .mock[data-step="3"] .mock-line { opacity: 1; transform: none; }
+.mock-check { position: absolute; top: -9px; right: -9px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--success); color: #fff; box-shadow: 0 0 0 3px var(--background); opacity: 0; transform: scale(.4); transition: opacity 200ms, transform 350ms cubic-bezier(.34, 1.56, .64, 1); }
+.mock-check .icon { width: 12px; height: 12px; stroke-width: 3; }
+.mock[data-step="3"] .mock-check { opacity: 1; transform: none; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.status-row { display: grid; gap: 10px; }
+.status-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.status-line span:first-child { font-weight: 500; }
+.status-line span:last-child { color: var(--muted-foreground); }
+
+/* ---- Загрузка · C · Морф по шагам ---- */
+.morph-lg { position: relative; display: grid; place-items: center; width: 88px; height: 88px; }
+.morph-lg .morph { position: absolute; width: 60px; height: 60px; }
+.morph-lg .morph-halo { position: absolute; inset: 0; }
+.morph-glyph { position: relative; display: grid; place-items: center; width: 24px; height: 24px; color: #fff; }
+.morph-glyph .icon { position: absolute; width: 24px; height: 24px; opacity: 0; transform: scale(.5) rotate(-30deg); transition: opacity 250ms, transform 400ms cubic-bezier(.34, 1.56, .64, 1); }
+.morph-glyph .icon[data-on] { opacity: 1; transform: none; }
+.segments { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; text-align: left; }
+.segment-track { height: 8px; overflow: hidden; border-radius: var(--radius-4xl); background: var(--muted); }
+.segment-fill { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--primary); transition: width 450ms var(--ease-out); }
+.segment-label { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; color: var(--muted-foreground); font-size: 12px; transition: color var(--duration); }
+.segment[data-state="active"] .segment-label { color: var(--foreground); font-weight: 500; }
+.segment[data-state="done"] .segment-label { color: var(--foreground); }
+
+/* ---- Загрузка · D · Шаги ---- */
+.stepper { display: grid; grid-template-columns: auto 1fr auto 1fr auto; align-items: center; padding: 8px 20px 0; }
+.node-wrap { position: relative; z-index: 0; display: grid; justify-items: center; width: 36px; }
+.node { position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--border); color: var(--muted-foreground); font-size: 13px; font-weight: 500; transition: background 250ms, color 250ms, box-shadow 250ms; }
+.node .icon { width: 16px; height: 16px; stroke-width: 2.5; }
+.node[data-state="done"] { background: var(--primary); color: #fff; box-shadow: none; }
+.node[data-state="active"] { color: #fff; box-shadow: none; }
+.node[data-state="active"]::before { content: ''; position: absolute; inset: 0; background: var(--primary); animation: morph 2.4s cubic-bezier(.65, 0, .35, 1) infinite; z-index: -1; }
+.node[data-state="active"]::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; background: var(--primary); opacity: .12; animation: halo 2.4s var(--ease-out) infinite; z-index: -2; }
+.node-label { position: absolute; top: 44px; width: 120px; text-align: center; color: var(--muted-foreground); font-size: 12px; line-height: 1.35; transition: color var(--duration); }
+.node-wrap:has([data-state="active"]) .node-label, .node-wrap:has([data-state="done"]) .node-label { color: var(--foreground); }
+.node-wrap:has([data-state="active"]) .node-label { font-weight: 500; }
+.connector { height: 2px; margin: 0 8px; border-radius: 1px; background: var(--border); overflow: hidden; }
+.connector span { display: block; width: 0; height: 100%; background: var(--primary); transition: width 500ms var(--ease-out); }
+.stepper-gap { height: 22px; }
+.current { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius-2xl); background: rgb(245 245 245 / .6); }
+.current .media { width: 32px; height: 32px; background: var(--background); box-shadow: 0 0 0 1px var(--border); color: var(--primary); }
+.current .media .icon { width: 16px; height: 16px; }
+.current-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.current-text b { font-weight: 500; }
+.current-count { color: var(--muted-foreground); }
+
+.stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.stats .badge { background: var(--muted); color: var(--foreground); }
+
+/* ---- Popup расширения (Chrome action) ---- */
+.popup-stage { position: absolute; top: 16px; right: 16px; z-index: 6; width: 400px; padding: 20px; border-radius: var(--radius-2xl); background: var(--background); box-shadow: 0 0 0 1px rgb(10 10 10 / .08), 0 12px 32px rgb(0 0 0 / .12); }
+.popup-stage[hidden] { display: none; }
+.popup-brand { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; }
+.popup-brand span:first-child { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--primary); color: #fff; }
+.popup-brand .icon { width: 13px; height: 13px; }
+.popup-stage > p { margin: 14px 0 0; color: var(--muted-foreground); line-height: 1.5; }
+.popup-hint { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 12px 14px; border-radius: var(--radius-2xl); background: rgb(245 245 245 / .6); }
+.mini-editor { position: relative; flex: none; width: 56px; height: 64px; border-radius: var(--radius-lg); background: radial-gradient(circle at 1px 1px, #d9dce1 1px, transparent 0) 0 0 / 8px 8px, #fff; box-shadow: 0 0 0 1px var(--border); }
+.mini-editor .mini-launcher { position: absolute; right: 7px; bottom: 24px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--primary); color: #fff; box-shadow: 0 0 0 4px rgb(50 144 255 / .18); }
+.mini-editor .mini-launcher .icon { width: 9px; height: 9px; stroke-width: 2.5; }
+.mini-editor .mini-help { position: absolute; right: 7px; bottom: 5px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px var(--border); }
+.popup-hint-title { font-weight: 500; line-height: 1.375; }
+.popup-hint-text { margin-top: 2px; color: var(--muted-foreground); font-size: 13px; line-height: 1.45; }
+.popup-stage .btn { width: 100%; margin-top: 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+  .morph-halo, .node::after { display: none; }
+  .mock-tile { animation: none; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-import" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M8 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-file-up" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 12v6"/><path d="m15 15-3-3-3 3"/></symbol>
+  <symbol id="i-file-json" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1"/><path d="M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
+  <symbol id="i-braces" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-file-x" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m14.5 12.5-5 5"/><path d="m9.5 12.5 5 5"/></symbol>
+  <symbol id="i-loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-circle-x" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></symbol>
+</svg>
+
+<nav class="proto-bar" aria-label="Состояния прототипа">
+  <b>Прототип флоу импорта · кликайте по состояниям или пройдите путь сами (зона загрузки → Импортировать)</b>
+  <button data-go="pick">1 · Файл</button>
+  <button data-go="pick-error">1 · Не тот файл</button>
+  <button data-go="review">2 · Проверка</button>
+  <button data-go="run" data-v="ring">3 · Загрузка A · Кольцо</button>
+  <button data-go="run" data-v="assemble">3 · B · Сборка</button>
+  <button data-go="run" data-v="morph">3 · C · Морф</button>
+  <button data-go="run" data-v="steps">3 · D · Шаги</button>
+  <button data-go="done">4 · Готово</button>
+  <button data-go="failed">Ошибка до вставки</button>
+  <button data-go="uncertain">Вставка не подтверждена</button>
+  <button data-go="closed">Только кнопка</button>
+  <button data-go="popup">Иконка Chrome вне редактора</button>
+</nav>
+
+<main class="editor">
+  <button class="launcher" type="button" aria-label="Импорт JSON" aria-haspopup="dialog"><svg class="icon"><use href="#i-import"/></svg></button>
+  <span class="tooltip" role="tooltip">Импорт JSON</span>
+  <span class="native-help" aria-hidden="true">?</span>
+
+  <div class="overlay" hidden>
+    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+      <button class="btn btn-ghost btn-icon dialog-close" type="button" aria-label="Закрыть"><svg class="icon"><use href="#i-x"/></svg></button>
+      <div class="step-host"></div>
+    </section>
+  </div>
+
+  <aside class="popup-stage" hidden>
+    <div class="popup-brand"><span><svg class="icon"><use href="#i-import"/></svg></span><span>Taptop Toolkit</span></div>
+    <p>Импортирует секции, страницы и целые сайты в Taptop из JSON-файла.</p>
+    <div class="popup-hint">
+      <span class="mini-editor" aria-hidden="true"><span class="mini-launcher"><svg class="icon"><use href="#i-import"/></svg></span><span class="mini-help"></span></span>
+      <div><div class="popup-hint-title">Где найти импорт</div><div class="popup-hint-text">Откройте проект в редакторе Taptop — синяя кнопка будет справа внизу.</div></div>
+    </div>
+  </aside>
+</main>
+
+<script>
+const PKG = {
+  file: 'hero-section.json', size: '48 КБ', layers: 24,
+  classes: [
+    { name: 'hero', status: 'update', diff: 'padding, gap' },
+    { name: 'hero__title', status: 'update', diff: 'font-size' },
+    { name: 'button-primary', status: 'update', diff: 'background' },
+    { name: 'hero__media', status: 'new' }, { name: 'hero__text', status: 'new' }, { name: 'hero__actions', status: 'new' },
+    { name: 'hero__badge', status: 'new' }, { name: 'hero__stat', status: 'new' }, { name: 'hero__grid', status: 'new' },
+    { name: 'hero__note', status: 'new' }, { name: 'hero__logo', status: 'new' }, { name: 'hero__caption', status: 'new' }
+  ],
+  images: 4
+};
+
+const plural = (n, one, few, many) => {
+  const m10 = n % 10, m100 = n % 100;
+  const word = m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
+  return `${n} ${word}`;
+};
+const icon = (id, cls = 'icon') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
+
+const overlay = document.querySelector('.overlay');
+const host = document.querySelector('.step-host');
+const closeBtn = document.querySelector('.dialog-close');
+const popup = document.querySelector('.popup-stage');
+let busy = false, timers = [], variant = 'ring';
+
+const header = (title, text) => `<header class="dialog-header"><h2 class="dialog-title" id="dlg-title">${title}</h2>${text ? `<p class="dialog-description">${text}</p>` : ''}</header>`;
+
+const views = {
+  pick: (error) => `
+    ${header('Импорт JSON', 'Секция, страница или целый сайт из Toolkit.')}
+    ${error ? `<div class="dropzone" tabindex="0" role="button" aria-label="Выбрать другой файл" aria-describedby="dz-error" data-invalid>
+      <span class="media">${icon('file-x')}</span>
+      <div role="alert" id="dz-error"><div class="dropzone-title">Файл не подходит</div><div class="dropzone-text"><strong>photo.png</strong> — нужен JSON из Toolkit.<br><span class="link">Выберите другой</span> или перетащите сюда</div></div>
+    </div>` : `<div class="dropzone" tabindex="0" role="button" aria-label="Выбрать JSON">
+      <span class="media">${icon('file-up')}</span>
+      <div><div class="dropzone-title">Перетащите JSON сюда</div><div class="dropzone-text">или <span class="link">выберите файл</span></div></div>
+    </div>`}`,
+
+  review: () => {
+    const upd = PKG.classes.filter(c => c.status === 'update');
+    const fresh = PKG.classes.filter(c => c.status === 'new');
+    const rows = [...upd, ...fresh].map(c => `<li><code>.${c.name}</code><span>${c.status === 'update' ? `<span class="diff">${c.diff}</span> <span class="badge badge-update">изменится</span>` : '<span class="badge badge-new">новый</span>'}</span></li>`).join('');
+    return `
+    ${header('Проверьте перед импортом', 'Всё добавится в конец Root.')}
+    <div class="items">
+      <div class="item item-muted">
+        <span class="media">${icon('file-json')}</span>
+        <div class="item-content"><span class="item-title">${PKG.file}</span><span class="item-text">${PKG.size}</span></div>
+        <button class="btn btn-ghost btn-sm" type="button" data-act="replace">Заменить</button>
+      </div>
+      <div class="changes">
+        <div class="change">${icon('layers')}<span class="change-label">Слои</span><span class="change-value"><strong>${PKG.layers}</strong> добавятся</span></div>
+        <details>
+          <summary class="change">${icon('braces')}<span class="change-label">Классы</span><span class="change-value"><strong>${plural(fresh.length, 'новый', 'новых', 'новых')}</strong>${upd.length ? ` · <strong>${upd.length}</strong> изменятся` : ''}</span>${icon('chevron', 'icon chevron')}</summary>
+          ${upd.length ? `<p class="class-note">Изменения применятся ко всем элементам проекта с этими классами.</p>` : ''}
+          <ul class="class-list">${rows}</ul>
+        </details>
+        <div class="change">${icon('image')}<span class="change-label">Изображения</span><span class="change-value"><strong>${PKG.images}</strong> загрузятся</span></div>
+      </div>
+    </div>
+    <footer class="dialog-footer split">
+      <button class="btn btn-outline" type="button" data-act="cancel">Отмена</button>
+      <button class="btn btn-primary" type="button" data-act="import">Импортировать</button>
+    </footer>`;
+  },
+
+  run: () => RUN[variant].html(),
+
+  done: () => `
+    <div class="run">
+      <span class="result-mark" data-tone="success">${icon('check')}</span>
+      <div><h2 class="run-title" id="dlg-title">Импорт завершён</h2><p class="run-text">Всё добавлено в конец Root<br>и готово к редактированию.</p></div>
+    </div>
+    <footer class="dialog-footer split">
+      <button class="btn btn-outline" type="button" data-act="again">Импортировать ещё</button>
+      <button class="btn btn-primary" type="button" data-act="close">Готово</button>
+    </footer>`,
+
+  failed: () => `
+    <div class="run">
+      <span class="result-mark" data-tone="error">${icon('circle-x')}</span>
+      <div><h2 class="run-title" id="dlg-title">Импорт не выполнен</h2><p class="run-text">Не удалось загрузить изображение 3 из 4.<br>В проект ничего не добавлено.</p></div>
+    </div>
+    <footer class="dialog-footer split">
+      <button class="btn btn-outline" type="button" data-act="again">Другой файл</button>
+      <button class="btn btn-primary" type="button" data-act="import">Повторить</button>
+    </footer>`,
+
+  uncertain: () => `
+    <div class="run">
+      <span class="result-mark" data-tone="warning">${icon('alert')}</span>
+      <div><h2 class="run-title" id="dlg-title">Проверьте результат</h2><p class="run-text">Taptop не ответил, добавлено ли всё. Посмотрите в конец Root: если там пусто — импортируйте снова.</p></div>
+    </div>
+    <footer class="dialog-footer center"><button class="btn btn-primary" type="button" data-act="close">Понятно</button></footer>`
+};
+
+function setBar(name) { document.querySelectorAll('[data-go]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.go === name && (name !== 'run' || b.dataset.v === variant)))); }
+
+function show(name) {
+  timers.forEach(clearTimeout); timers = []; busy = false;
+  setBar(name);
+  popup.hidden = name !== 'popup';
+  if (name === 'closed' || name === 'popup') { overlay.hidden = true; return; }
+  overlay.hidden = false;
+  const key = name === 'pick-error' ? 'pick' : name;
+  host.innerHTML = `<div class="step">${views[key](name === 'pick-error')}</div>`;
+  busy = name === 'run';
+  closeBtn.hidden = busy;
+  if (name === 'run') simulate();
+}
+
+const PHASES = ['Загружаем изображения', 'Вставляем в Root', 'Проверяем результат'];
+const FILES = ['hero-bg.webp', 'avatar-1.png', 'avatar-2.png', 'logo.svg'];
+const runHead = (center = true) => center
+  ? `<div><h2 class="run-title" id="dlg-title">Импортируем…</h2><p class="run-text">Не закрывайте вкладку до конца процесса.</p></div>`
+  : header('Импортируем…', 'Не закрывайте вкладку до конца процесса.');
+const countText = st => st.step === 0 ? `${st.done} из ${st.total}` : '';
+
+const RUN = {
+  ring: {
+    html: () => `<div class="run" aria-live="polite">
+      <div class="ring" role="progressbar" aria-valuemin="0" aria-valuemax="100"><svg viewBox="0 0 120 120"><circle class="ring-track" cx="60" cy="60" r="52"/><circle class="ring-value" cx="60" cy="60" r="52" stroke-dasharray="326.7" stroke-dashoffset="326.7"/></svg><div class="ring-core"><span class="tnum"><span data-pct>0</span><small>%</small></span></div></div>
+      <div><h2 class="run-title phase-title" id="dlg-title" aria-live="polite"><span class="phase-text" data-phase></span></h2><p class="run-text">Не закрывайте вкладку до конца процесса.</p></div>
+    </div>`,
+    update(root, st) {
+      root.querySelector('.ring-value').style.strokeDashoffset = 326.7 * (1 - st.pct / 100);
+      root.querySelector('[data-pct]').textContent = Math.round(st.pct);
+      const title = root.querySelector('.phase-title');
+      const next = PHASES[st.step];
+      const count = countText(st);
+      const current = title.querySelector('.phase-text:not([data-leaving])');
+      if (current.dataset.phase !== next) {
+        if (current.dataset.phase) {
+          current.dataset.leaving = '';
+          setTimeout(() => current.remove(), 300);
+          const incoming = document.createElement('span');
+          incoming.className = 'phase-text';
+          title.append(incoming);
+          incoming.dataset.phase = next;
+          incoming.innerHTML = `${next}<span class="phase-count tnum"></span>`;
+        } else {
+          current.dataset.phase = next;
+          current.innerHTML = `${next}<span class="phase-count tnum"></span>`;
+        }
+      }
+      title.querySelector('.phase-text:not([data-leaving]) .phase-count').textContent = count ? ` ${count}` : '';
+    }
+  },
+  assemble: {
+    html: () => `${runHead(false)}
+      <div class="assemble" aria-hidden="true"><div class="mock" data-step="0">
+        <span class="mock-bar"></span>
+        <div class="mock-tiles">${FILES.map(() => `<span class="mock-tile">${icon('image')}</span>`).join('')}</div>
+        <span class="mock-line"></span><span class="mock-line"></span>
+        <span class="mock-check">${icon('check')}</span>
+      </div></div>
+      <div class="status-row" aria-live="polite">
+        <div class="status-line"><span data-phase></span><span class="tnum" data-count></span></div>
+        <div class="progress" role="progressbar"><span class="progress-value"></span></div>
+      </div>`,
+    update(root, st) {
+      root.querySelectorAll('.mock-tile').forEach((t, i) => t.toggleAttribute('data-ready', st.step > 0 || i < st.done));
+      root.querySelector('.mock').dataset.step = st.finished ? 3 : st.step === 0 ? 0 : 2;
+      root.querySelector('[data-phase]').textContent = PHASES[st.step];
+      root.querySelector('[data-count]').textContent = countText(st);
+      root.querySelector('.progress-value').style.transform = `translateX(-${100 - st.pct}%)`;
+    }
+  },
+  morph: {
+    html: () => `<div class="run" aria-live="polite">
+      <div class="morph-lg" aria-hidden="true"><span class="morph-halo"></span><span class="morph"></span><span class="morph-glyph">${icon('image')}${icon('layers')}${icon('search')}</span></div>
+      ${runHead()}
+      <div class="segments">${['Изображения', 'Вставка', 'Проверка'].map(l => `<div class="segment"><div class="segment-track"><span class="segment-fill"></span></div><div class="segment-label"><span>${l}</span><span class="tnum" data-seg-count></span></div></div>`).join('')}</div>
+    </div>`,
+    update(root, st) {
+      root.querySelectorAll('.morph-glyph .icon').forEach((g, i) => g.toggleAttribute('data-on', i === st.step));
+      root.querySelectorAll('.segment').forEach((seg, i) => {
+        seg.dataset.state = i < st.step || (st.finished && i === 2) ? 'done' : i === st.step ? 'active' : 'pending';
+        const fill = i < st.step ? 100 : i > st.step ? 0 : i === 0 ? st.done / st.total * 100 : st.finished ? 100 : 55;
+        seg.querySelector('.segment-fill').style.width = `${fill}%`;
+        seg.querySelector('[data-seg-count]').textContent = i === 0 ? `${st.step > 0 ? st.total : st.done}/${st.total}` : '';
+      });
+    }
+  },
+  steps: {
+    html: () => `${runHead(false)}
+      <div class="stepper" aria-hidden="true">
+        ${['Изображения', 'Вставка в Root', 'Проверка'].map((l, i) => `${i ? '<div class="connector"><span></span></div>' : ''}<div class="node-wrap"><span class="node" data-state="pending"><span>${i + 1}</span></span><span class="node-label">${l}</span></div>`).join('')}
+      </div>
+      <div class="stepper-gap"></div>
+      <div class="current" aria-live="polite"><span class="media">${icon('loader', 'icon spin')}</span><span class="current-text" data-current></span><span class="current-count tnum" data-count></span></div>`,
+    update(root, st) {
+      root.querySelectorAll('.node').forEach((n, i) => {
+        const state = i < st.step || (st.finished && i === 2) ? 'done' : i === st.step ? 'active' : 'pending';
+        if (n.dataset.state !== state) { n.dataset.state = state; n.innerHTML = state === 'done' ? icon('check') : `<span>${i + 1}</span>`; }
+      });
+      root.querySelectorAll('.connector span').forEach((c, i) => { c.style.width = i < st.step ? '100%' : '0'; });
+      root.querySelector('[data-current]').innerHTML = st.step === 0 ? `Загружаем <b>${FILES[Math.min(st.done, st.total - 1)]}</b>` : st.step === 1 ? `Вставляем <b>${PKG.layers} слоя</b> в Root` : 'Проверяем результат';
+      root.querySelector('[data-count]').textContent = countText(st);
+    }
+  }
+};
+
+function simulate() {
+  const v = RUN[variant];
+  const st = { step: 0, done: 0, total: FILES.length, pct: 0, finished: false };
+  const tick = () => v.update(host, st);
+  const at = (ms, fn) => timers.push(setTimeout(() => { fn(); tick(); }, ms));
+  tick();
+  let t = 500;
+  for (let i = 1; i <= st.total; i++) { at(t, () => { st.done = i; st.pct = i / st.total * 70; }); t += 750; }
+  at(t, () => { st.step = 1; st.pct = 85; }); t += 1400;
+  at(t, () => { st.step = 2; st.pct = 95; }); t += 1200;
+  at(t, () => { st.pct = 100; st.finished = true; }); t += 900;
+  timers.push(setTimeout(() => show('done'), t));
+}
+
+document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => { if (b.dataset.v) variant = b.dataset.v; show(b.dataset.go); }));
+document.querySelector('.launcher').addEventListener('click', () => show('pick'));
+closeBtn.addEventListener('click', () => { if (!busy) show('closed'); });
+overlay.addEventListener('click', e => { if (e.target === overlay && !busy) show('closed'); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !busy && !overlay.hidden) show('closed'); });
+host.addEventListener('click', e => {
+  if (e.target.closest('.dropzone')) return show('review');
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (act === 'import') show('run');
+  if (act === 'replace' || act === 'again') show('pick');
+  if (act === 'cancel' || act === 'close') show('closed');
+});
+host.addEventListener('keydown', e => { if (e.target.closest('.dropzone') && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); show('review'); } });
+host.addEventListener('dragover', e => { const z = e.target.closest('.dropzone'); if (z) { e.preventDefault(); z.classList.add('is-over'); } });
+host.addEventListener('dragleave', e => e.target.closest('.dropzone')?.classList.remove('is-over'));
+host.addEventListener('drop', e => { if (e.target.closest('.dropzone')) { e.preventDefault(); show('review'); } });
+
+const q = new URLSearchParams(location.search);
+if (RUN[q.get('v')]) variant = q.get('v');
+show(q.get('state') || 'pick');
+</script>
+</body>
+</html>

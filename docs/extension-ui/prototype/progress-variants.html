@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Загрузка — варианты счётчика</title>
+<style>
+  /* Варианты экрана загрузки. Каждый рендерится в своём shadow root поверх настоящего
+     extension/editor/import-ui.css; в варианте меняются только счётчик и воздух. */
+  body { margin: 0; padding: 24px 16px 48px; background: #e9ebee; font: 14px/1.4 system-ui, sans-serif; color: #0a0a0a; }
+  h1 { margin: 0 auto 4px; max-width: 960px; font-size: 18px; font-weight: 600; }
+  .lead { margin: 0 auto 24px; max-width: 960px; color: #737373; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; max-width: 960px; margin: 0 auto 24px; }
+  .controls button { height: 28px; padding: 0 12px; border: 1px solid #d4d4d4; border-radius: 99px; background: #fff; font: 500 12px system-ui; cursor: pointer; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 448px), 1fr)); gap: 32px 24px; max-width: 960px; margin: 0 auto; }
+  figure { margin: 0; }
+  figcaption { margin-bottom: 10px; font-weight: 600; }
+  figcaption span { display: block; margin-top: 2px; color: #737373; font-weight: 400; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>Экран загрузки: счётчик в плашке</h1>
+<p class="lead">Отступ заголовок → описание не меняется (6px). Во всех вариантах больше воздуха сверху и снизу. Плашка показывается только пока грузятся изображения.</p>
+<div class="controls">
+  <button type="button" data-play>▶ Проиграть загрузку 1 → 9</button>
+  <button type="button" data-phase="uploading">Загрузка 7 из 9</button>
+  <button type="button" data-phase="inserting">Вставляем в Root (без плашки)</button>
+</div>
+<div class="grid" id="grid"></div>
+
+<script>
+const RING = 326.73;
+const variants = [
+  {
+    id: 'A', name: 'A · было: плашка по центру строки',
+    note: 'Серая плашка справа от заголовка, 12px. Самый компактный.',
+    css: `
+      .tt-dialog { padding: 40px 32px 36px; }
+      .tt-center { gap: 28px; padding: 0; }
+      .tt-phase { display: flex; justify-content: center; align-items: center; gap: 8px; height: 24px; }
+      .v-count { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: var(--radius-4xl); background: var(--muted); color: var(--muted-foreground); font-size: 12px; font-weight: 500; letter-spacing: 0; font-variant-numeric: tabular-nums; }`,
+    html: s => `<div class="tt-center">${ring(s)}<div><h2 class="tt-title tt-phase">${s.title}${s.count ? `<span class="v-count">${s.count}</span>` : ''}</h2><p class="tt-result-text">Не закрывайте вкладку до конца процесса.</p></div></div>`
+  },
+  {
+    id: 'A2', name: 'A · выбрано: плашка по оптическому центру',
+    note: 'Как в расширении: плашка 20px, центр совпадает с центром строчных букв заголовка (замер 0).',
+    css: `
+      .tt-dialog { padding: 40px 32px 36px; }
+      .tt-center { gap: 28px; padding: 0; }
+      .tt-phase { display: flex; justify-content: center; align-items: center; gap: 8px; }
+      .v-count { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--radius-4xl); background: var(--muted); color: var(--muted-foreground); font-size: 12px; font-weight: 500; line-height: 1; letter-spacing: 0; font-variant-numeric: tabular-nums; transform: translateY(1.65px); }`,
+    html: s => `<div class="tt-center">${ring(s)}<div><h2 class="tt-title tt-phase">${s.title}${s.count ? `<span class="v-count">${s.count}</span>` : ''}</h2><p class="tt-result-text">Не закрывайте вкладку до конца процесса.</p></div></div>`
+  },
+  {
+    id: 'B', name: 'B · Синяя плашка в строке',
+    note: 'Как A, но плашка в цвете прогресса — связывает число с кольцом.',
+    css: `
+      .tt-dialog { padding: 40px 32px 36px; }
+      .tt-center { gap: 28px; padding: 0; }
+      .tt-phase { display: flex; justify-content: center; align-items: center; gap: 8px; height: 24px; }
+      .v-count { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: var(--radius-4xl); background: var(--primary-soft); color: var(--primary-text); font-size: 12px; font-weight: 500; letter-spacing: 0; font-variant-numeric: tabular-nums; }`,
+    html: s => `<div class="tt-center">${ring(s)}<div><h2 class="tt-title tt-phase">${s.title}${s.count ? `<span class="v-count">${s.count}</span>` : ''}</h2><p class="tt-result-text">Не закрывайте вкладку до конца процесса.</p></div></div>`
+  },
+  {
+    id: 'C', name: 'C · Плашка над заголовком',
+    note: 'Плашка между кольцом и заголовком; заголовок остаётся коротким и ровным.',
+    css: `
+      .tt-dialog { padding: 40px 32px 36px; }
+      .tt-center { gap: 0; padding: 0; }
+      .tt-ring { margin-bottom: 24px; }
+      .v-count { display: inline-flex; align-items: center; height: 22px; margin-bottom: 12px; padding: 0 10px; border-radius: var(--radius-4xl); background: var(--muted); color: var(--muted-foreground); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+      .v-count-slot { display: grid; justify-items: center; min-height: 34px; }`,
+    html: s => `<div class="tt-center">${ring(s)}<div class="v-count-slot">${s.count ? `<span class="v-count">${s.count}</span>` : ''}</div><div><h2 class="tt-title tt-phase">${s.title}</h2><p class="tt-result-text">Не закрывайте вкладку до конца процесса.</p></div></div>`
+  },
+  {
+    id: 'D', name: 'D · Плашка внутри кольца',
+    note: 'Процент и плашка вместе в центре кольца (кольцо 128px). Заголовок — только шаг.',
+    css: `
+      .tt-dialog { padding: 40px 32px 36px; }
+      .tt-center { gap: 28px; padding: 0; }
+      .tt-ring { width: 128px; height: 128px; }
+      .tt-ring-core { grid-auto-flow: row; align-content: center; gap: 4px; }
+      .v-pct { display: flex; align-items: center; }
+      .v-count { justify-self: center; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: var(--radius-4xl); background: var(--muted); color: var(--muted-foreground); font-size: 11px; font-weight: 500; letter-spacing: 0; font-variant-numeric: tabular-nums; }`,
+    html: s => `<div class="tt-center">${ring(s, `<span class="v-pct"><span>${s.percent}</span><small>%</small></span>${s.count ? `<span class="v-count">${s.count}</span>` : ''}`)}<div><h2 class="tt-title tt-phase">${s.title}</h2><p class="tt-result-text">Не закрывайте вкладку до конца процесса.</p></div></div>`
+  }
+];
+
+function ring(s, core) {
+  return `<div class="tt-ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tt-ring-track" cx="60" cy="60" r="52"/><circle class="tt-ring-value" cx="60" cy="60" r="52" stroke-dasharray="${RING}" stroke-dashoffset="${RING * (1 - s.percent / 100)}"/></svg><span class="tt-ring-core">${core ?? `<span>${s.percent}</span><small>%</small>`}</span></div>`;
+}
+
+const bust = `?v=${Date.now()}`;
+const font = new FontFace('TT Inter', 'url(../../../extension/fonts/InterVariable.woff2) format("woff2")', { weight: '100 900' });
+document.fonts.add(font);
+const roots = variants.map(v => {
+  const fig = document.createElement('figure');
+  fig.innerHTML = `<figcaption>${v.name}<span>${v.note}</span></figcaption>`;
+  const host = document.createElement('div');
+  const root = host.attachShadow({ mode: 'open' });
+  root.innerHTML = `<link rel="stylesheet" href="../../../extension/editor/import-ui.css${bust}"><style>.tt-dialog { position: relative; inset: auto; display: block; width: 100%; max-height: none; box-shadow: 0 0 0 1px var(--dialog-ring), 0 24px 64px var(--dialog-shadow); } .tt-dialog .tt-ring-value { transition: stroke-dashoffset 400ms var(--ease-out); } ${v.css}</style><div class="tt-dialog"><div class="v-body"></div></div>`;
+  fig.append(host);
+  document.getElementById('grid').append(fig);
+  return { v, body: root.querySelector('.v-body') };
+});
+
+function render(state) {
+  for (const { v, body } of roots) body.innerHTML = v.html(state);
+}
+const uploading = (done, total = 9) => ({ title: 'Загружаем изображения', count: `${done} из ${total}`, percent: Math.round(done / total * 70) });
+const inserting = { title: 'Вставляем в Root', count: '', percent: 85 };
+render(uploading(7));
+
+let timer;
+document.querySelector('[data-play]').addEventListener('click', () => {
+  clearInterval(timer);
+  let i = 0;
+  render(uploading(0));
+  timer = setInterval(() => {
+    i += 1;
+    if (i <= 9) render(uploading(i));
+    else if (i === 10) render(inserting);
+    else if (i === 11) render({ title: 'Проверяем результат', count: '', percent: 95 });
+    else { clearInterval(timer); render(uploading(7)); }
+  }, 600);
+});
+document.querySelector('[data-phase="uploading"]').addEventListener('click', () => { clearInterval(timer); render(uploading(7)); });
+document.querySelector('[data-phase="inserting"]').addEventListener('click', () => { clearInterval(timer); render(inserting); });
+</script>
+</body>
+</html>

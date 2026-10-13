@@ -1,0 +1,46 @@
+@font-face {
+  font-family: 'TT Inter';
+  src: url('../fonts/InterVariable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --muted-soft: rgb(245 245 245 / .6);
+  --muted-foreground: #737373;
+  --border: #e5e5e5;
+  --dots: #d9dce1;
+  --primary: #3290ff;
+  --primary-foreground: #ffffff;
+  --primary-halo: rgb(50 144 255 / .18);
+  --radius-lg: 10px;
+  --radius-2xl: 18px;
+  color-scheme: light;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: 'TT Inter', ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.43;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+* { box-sizing: border-box; }
+html, body { font-size: 14px; }
+body { width: 400px; margin: 0; background: var(--background); }
+svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.panel { padding: 20px; }
+.brand { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; }
+.brand-mark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: var(--primary-foreground); background: var(--primary); }
+.brand-mark svg { width: 13px; height: 13px; }
+.lead { margin: 14px 0 0; color: var(--muted-foreground); font-size: 14px; line-height: 1.5; }
+.hint { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 12px 14px; border-radius: var(--radius-2xl); background: var(--muted-soft); }
+.mini-editor { position: relative; flex: none; width: 56px; height: 64px; border-radius: var(--radius-lg); background: radial-gradient(circle at 1px 1px, var(--dots) 1px, transparent 0) 0 0 / 8px 8px, var(--background); box-shadow: 0 0 0 1px var(--border); }
+.mini-launcher { position: absolute; right: 7px; bottom: 24px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; color: var(--primary-foreground); background: var(--primary); box-shadow: 0 0 0 4px var(--primary-halo); }
+.mini-launcher svg { width: 9px; height: 9px; stroke-width: 2.5; }
+.mini-help { position: absolute; right: 7px; bottom: 5px; width: 16px; height: 16px; border-radius: 50%; background: var(--background); box-shadow: 0 0 0 1px var(--border); }
+.hint-title { margin: 0; font-size: 14px; font-weight: 500; line-height: 1.375; }
+.hint-text { margin: 2px 0 0; color: var(--muted-foreground); font-size: 13px; line-height: 1.45; }

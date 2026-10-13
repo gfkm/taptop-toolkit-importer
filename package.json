@@ -1,0 +1,13 @@
+{
+  "name": "taptop-toolkit-importer",
+  "version": "0.2.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Independent Chrome importer for Taptop Toolkit JSON packages",
+  "type": "commonjs",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test",
+    "package": "node scripts/package-extension.js"
+  }
+}
