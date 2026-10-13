@@ -4,7 +4,7 @@
 
 *English: a Chrome extension that imports Taptop Toolkit JSON packages (layers, classes and images) into the open Taptop editor.*
 
-> **Статус:** ранняя версия `0.2.0`. В Chrome Web Store расширения пока нет. Оно устанавливается вручную из этой папки — это займёт пару минут.
+В Chrome Web Store расширения пока нет — оно устанавливается вручную из этой папки за пару минут.
 
 Расширение — обязательная часть системы: без него подготовленная страница в Taptop не попадёт. Как работает вся система и что она умеет переносить, рассказано в [README Taptop Toolkit](https://github.com/staumakes/taptop-toolkit).
 
