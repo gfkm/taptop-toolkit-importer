@@ -32,6 +32,30 @@ test('compiler-produced page roles remain unchanged after importing its UI kit',
   for (const role of roles) assert.ok(result.classes.unchanged.includes(role), `${role} was not reused`);
 });
 
+test('a fork-built page with site classes inspects, keeps them by name and refuses a project without them', async () => {
+  const page = fixture('managed-external-page.json');
+  const inspected = await inspectPackage({ packageText: JSON.stringify(page) });
+  assert.equal(inspected.ok, true, inspected.errors?.join('\n'));
+  const site = page.externalClasses.map(item => item.name);
+  assert.deepEqual(site, ['site-body', 'site-card', 'site-title']);
+  const observe = async incoming => Object.fromEntries(incoming.map(item => [item.stableKey, null]));
+  // The project styles its site classes differently from anything in the file.
+  const lookup = present => async query => ({
+    available: true,
+    existing: query.names.filter(name => present.includes(name)),
+    selectors: Object.fromEntries(query.names.map(name => [`screen/.${name}`, { color: '#ff0000' }])),
+    ...(query.external ? { externalPresent: query.external.map(item => item.name).filter(name => present.includes(name)) } : {})
+  });
+  const result = await planImport({ wrapper: page, decisions: { adopt: 'copy', conflicts: 'take' }, targetKey: 'synthetic-target:design:1:version:2', observe, lookup: lookup(site) });
+  assert.deepEqual(result.classes.external, site);
+  assert.deepEqual(result.classes.copies, []);
+  assert.deepEqual(result.classes.created, page.syncPackage.classes.map(item => item.name));
+  const layerNames = Object.values(result.wrapper.clipboardData.copiedLayout.mainClassNameCollection.map).map(item => item.value);
+  for (const name of site) assert.ok(layerNames.includes(name), `${name} was renamed`);
+  const refused = await planImport({ wrapper: page, decisions: { adopt: 'copy', conflicts: 'take' }, targetKey: 'synthetic-target:design:1:version:2', observe, lookup: lookup(['site-card']) });
+  assert.deepEqual(refused.refused, { code: 'EXTERNAL_CLASSES_MISSING', missing: ['site-body', 'site-title'] });
+});
+
 test('the versioned contract snapshot matches its recorded hash', () => {
   const snapshot = fixture('contract-snapshot.json');
   for (const entry of snapshot.files) {

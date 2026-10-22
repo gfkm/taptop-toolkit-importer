@@ -1,19 +1,22 @@
 (function (root, factory) {
-  const api = factory();
+  const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.TaptopImportSession = api;
-})(typeof globalThis === 'undefined' ? this : globalThis, function () {
+})(typeof globalThis === 'undefined' ? this : globalThis, function (root) {
   function copy(value) {
     return JSON.parse(JSON.stringify(value));
   }
 
-  function failed(code, error, retryable = true) {
-    return {
+  // `details` carries structured data for the UI (e.g. { missing: [names] }).
+  function failed(code, error, retryable = true, details = undefined) {
+    const result = {
       status: 'failed',
       phase: 'failed',
       receipt: null,
       error: { code, message: error?.message || String(error), retryable }
     };
+    if (details !== undefined) result.error.details = details;
+    return result;
   }
 
   function requireAdapter(adapter) {
@@ -64,6 +67,29 @@
       if (!clipboardData || !Array.isArray(assets)) throw new TypeError('IMPORT_PACKAGE_INCOMPLETE');
       if (behaviorPackages.length) requireBehaviorAdapter(adapter);
       onProgress({ phase: 'checking' });
+      // Target-site classes the layers use by name must exist before the
+      // first write. This guards the session's own contract for any caller,
+      // whatever it planned before: a malformed declaration, an adapter that
+      // cannot check, or a missing class stops the session here.
+      const externalClasses = root.TaptopExternalClasses || (typeof require === 'function' ? require('./external-classes.js') : null);
+      if (typeof externalClasses?.declaration !== 'function') {
+        return failed('SESSION_UNAVAILABLE', new Error('IMPORT_MODULE_MISSING: external-classes'), false);
+      }
+      const declared = externalClasses.declaration(wrapper);
+      if (!declared.valid) {
+        return failed('EXTERNAL_CLASSES_INVALID', new Error(`EXTERNAL_CLASSES_INVALID: ${declared.errors.join('; ')}`), false);
+      }
+      const external = declared.list;
+      if (external.length) {
+        if (typeof adapter.missingExternalClasses !== 'function') {
+          return failed('EXTERNAL_CLASSES_UNVERIFIED', new Error('EXTERNAL_CLASSES_UNVERIFIED: the adapter cannot check site classes'), false);
+        }
+        let missing;
+        try { missing = await adapter.missingExternalClasses(copy(external)); }
+        catch (error) { return failed('EXTERNAL_CLASSES_UNVERIFIED', error); }
+        if (!Array.isArray(missing)) return failed('EXTERNAL_CLASSES_UNVERIFIED', new Error('EXTERNAL_CLASSES_UNVERIFIED: no answer about site classes'));
+        if (missing.length) return failed('EXTERNAL_CLASSES_MISSING', new Error(`EXTERNAL_CLASSES_MISSING: ${missing.join(', ')}`), false, { missing: [...missing] });
+      }
       const mediaByKey = new Map();
       for (let index = 0; index < assets.length; index += 1) {
         const asset = assets[index];

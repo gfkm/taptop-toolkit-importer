@@ -5,7 +5,7 @@ const test = require('node:test');
 
 const extension = path.join(__dirname, '..', 'src');
 const read = file => fs.readFileSync(path.join(extension, file), 'utf8');
-const { getImportView, describeInvalidFile, launcherPlacement } = require('../src/editor/import-ui.js');
+const { getImportView, describeInvalidFile, launcherPlacement, importDecisions } = require('../src/editor/import-ui.js');
 
 const report = {
   ok: true,
@@ -17,7 +17,7 @@ test('background owns one idempotent mount and opens the dialog from the toolbar
   const background = read('background.js');
   assert.match(background, /mount-editor-importer/);
   assert.match(background, /editor\/mount-importer\.js/);
-  assert.match(background, /taptop\.site/);
+  assert.match(background, /importScripts\('lib\/editor-host\.js'\)/);
   assert.match(background, /action\.onClicked/);
   assert.match(background, /setPopup/);
   assert.doesNotMatch(background, /insertCSS/);
@@ -60,6 +60,8 @@ test('package validation errors are translated, never shown in English', () => {
   assert.equal(describeInvalidFile('a.json', 'Package must be valid JSON'), 'файл повреждён или это не JSON.');
   assert.match(describeInvalidFile('a.json', 'This is an earlier package with a separate asset folder. Compile again with Toolkit 0.2.'), /старого формата/);
   assert.match(describeInvalidFile('a.json', 'Embedded asset x: bad'), /повреждён/);
+  // A part of the extension did not load: the file is not to blame.
+  assert.equal(describeInvalidFile('a.json', 'IMPORT_MODULE_MISSING: external-classes'), 'расширение загрузилось не полностью. Обновите страницу.');
 });
 
 test('review shows what will change in the project', () => {
@@ -288,6 +290,86 @@ test('the class summary stays on one line and always mentions classes you edited
   assert.equal(view.rows[1].value, '12 новых · 2 изменены вами');
   const quiet = getImportView({ phase: 'ready', backendAvailable: true, fileName: 'p.json', fileSize: 1, report: { ok: true, summary: { nodes: 1, classes: 3, instances: 1, assets: 0 }, classes: { available: true, total: 3, created: [], updated: [], unchanged: ['a', 'b', 'c'], adopt: [], conflicts: [], copies: [] } } });
   assert.equal(quiet.rows[1].value, '3 без изменений');
+});
+
+const adoptReport = { ...report, classes: { ...report.classes, created: ['a'], updated: [], unchanged: [], adopt: ['card', 'button'] } };
+
+test('a same-name project class offers copy, the existing class or update; copy is the default', () => {
+  const view = getImportView({ phase: 'ready', backendAvailable: true, fileName: 'p.json', fileSize: 1, report: adoptReport });
+  assert.equal(view.choices.length, 1);
+  const [choice] = view.choices;
+  assert.equal(choice.id, 'adopt');
+  assert.deepEqual(choice.options.map(option => [option.value, option.label]), [['copy', 'Копиями'], ['existing', 'Существующие'], ['update', 'Обновить']]);
+  assert.equal(choice.value, 'copy');
+  assert.equal(choice.stacked, true);
+  assert.match(choice.hint, /копи/i);
+  const group = view.rows[1].groups.find(item => item.id === 'adopt');
+  assert.deepEqual(group.chips.map(chip => chip.name), ['card', 'button']);
+  assert.doesNotMatch(group.note, /заменят/, 'the note does not promise an update the user has not chosen');
+});
+
+test('the chosen option is shown and is what the import runs with', () => {
+  const existing = getImportView({ phase: 'ready', backendAvailable: true, report: adoptReport, decisions: { adopt: 'existing' } });
+  assert.equal(existing.choices[0].value, 'existing');
+  assert.match(existing.choices[0].hint, /^Использовать существующие: /);
+  assert.match(existing.choices[0].hint, /не изменит/);
+  const update = getImportView({ phase: 'ready', backendAvailable: true, report: adoptReport, decisions: { adopt: 'update' } });
+  assert.match(update.choices[0].hint, /во всём проекте/);
+  assert.deepEqual(importDecisions({ report: adoptReport, decisions: { adopt: 'existing' } }), { adopt: 'existing', conflicts: 'take' });
+  assert.deepEqual(importDecisions({ report: adoptReport, decisions: {} }), { adopt: 'copy', conflicts: 'take' });
+  assert.deepEqual(importDecisions({ report: adoptReport, decisions: { adopt: 'anything' } }), { adopt: 'copy', conflicts: 'take' });
+  assert.match(read('editor/import-ui.css'), /\.tt-choice\[data-stacked\]/);
+});
+
+// Measured 2026-10-16 in headless Edge (local test stand): «Существующие» needs
+// 114px with 12px side padding and overflowed below a ~420px dialog.
+test('three stacked options shrink with an ellipsis instead of overflowing', () => {
+  const css = read('editor/import-ui.css');
+  const rule = /\.tt-choice\[data-stacked\] \.tt-segment-option\s*\{([^}]*)\}/.exec(css)?.[1] || '';
+  assert.match(rule, /min-width:\s*0/);
+  assert.match(rule, /overflow:\s*hidden/);
+  assert.match(rule, /text-overflow:\s*ellipsis/);
+  assert.match(rule, /padding:\s*0 8px/);
+});
+
+test('site classes used by name are listed as taken from the project', () => {
+  const view = getImportView({ phase: 'ready', backendAvailable: true, report: { ...report, classes: { ...report.classes, external: ['site-body', 'site-title'] } } });
+  const group = view.rows[1].groups.find(item => item.id === 'external');
+  assert.equal(group.label, 'Классы сайта');
+  // Their names are required by the file: above «Без изменений», the only count-only group.
+  const ids = view.rows[1].groups.map(item => item.id);
+  assert.equal(ids.indexOf('external'), ids.indexOf('unchanged') - 1, ids.join(', '));
+  assert.deepEqual(group.chips.map(chip => chip.name), ['site-body', 'site-title']);
+  assert.deepEqual(view.choices, []);
+});
+
+test('a project without the site classes refuses the file and names what is missing', () => {
+  // Names come as data; the message text is never parsed for them.
+  assert.equal(describeInvalidFile('p.json', 'EXTERNAL_CLASSES_MISSING: not-these', { missing: ['site-body', 'site-title'] }), 'в проекте нет классов сайта: .site-body, .site-title.');
+  const many = describeInvalidFile('p.json', 'EXTERNAL_CLASSES_MISSING', { missing: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7'] });
+  assert.equal(many, 'в проекте нет классов сайта: .a1, .a2, .a3, .a4, .a5 и ещё 2.');
+  assert.equal(describeInvalidFile('p.json', 'EXTERNAL_CLASSES_MISSING: x'), 'в проекте нет нужных классов сайта.');
+  assert.match(describeInvalidFile('p.json', 'EXTERNAL_CLASSES_UNVERIFIED: site-body'), /не удалось проверить классы сайта/);
+  const invalid = getImportView({ phase: 'invalid', fileName: 'p.json', message: 'EXTERNAL_CLASSES_MISSING: site-title', details: { missing: ['site-title'] } });
+  assert.equal(invalid.dropzone.reason, 'в проекте нет классов сайта: .site-title.', 'review does not claim «ничего не добавлено»: nothing was attempted');
+  const failed = getImportView({ phase: 'failed', errorCode: 'EXTERNAL_CLASSES_MISSING', message: 'EXTERNAL_CLASSES_MISSING: other', details: { missing: ['site-title'] }, retryable: false, failedPhase: 'preparing' });
+  assert.equal(failed.tone, 'error');
+  assert.deepEqual(failed.lines, ['В проекте нет классов сайта: .site-title.', 'На страницу ничего не добавлено.']);
+  assert.equal(failed.retryVisible, false);
+  assert.match(describeInvalidFile('p.json', 'EXTERNAL_CLASSES_INVALID: '), /повреждён/);
+  assert.equal(getImportView({ phase: 'failed', errorCode: 'EXTERNAL_CLASSES_INVALID', message: 'EXTERNAL_CLASSES_INVALID: ', retryable: false, failedPhase: 'preparing' }).lines[0], 'Файл экспорта повреждён.');
+  const unverified = getImportView({ phase: 'failed', errorCode: 'EXTERNAL_CLASSES_UNVERIFIED', message: 'x', retryable: true, failedPhase: 'preparing' });
+  assert.equal(unverified.lines[0], 'Не удалось проверить классы сайта. Обновите страницу.');
+  assert.equal(unverified.retryVisible, true);
+});
+
+// Regression 2026-10-15 (headless Edge on a stand): selectFile stored the
+// translated reason and the view translated it again into «повреждён».
+// The dialog path itself is covered in test/import-ui-dialog.test.js.
+test('an invalid file reason is translated once, by the view', () => {
+  assert.equal(describeInvalidFile('p.json', describeInvalidFile('p.json', 'Unsupported package type')), 'файл экспорта повреждён. Экспортируйте его заново.', 'a second pass loses the reason');
+  const view = getImportView({ phase: 'invalid', fileName: 'p.json', message: 'Unsupported package type' });
+  assert.equal(view.dropzone.reason, 'нужен JSON из Toolkit.');
 });
 
 test('a class name Taptop would respell is named, with the fix', () => {

@@ -92,6 +92,23 @@ test('reads only the requested project classes and selector rules', () => {
   });
 });
 
+test('reports which external classes the project has, each in its own collection', () => {
+  const layout = {
+    mainClassNameCollection: { map: { c1: { id: 'c1', value: 'site-title' }, c2: { id: 'c2', value: 'site-mark' } } },
+    designClassNameCollection: { map: new Map([['d1', { id: 'd1', value: 'site-fill' }]]) },
+    mainSelectorCollection: { map: {} }
+  };
+  const external = [{ name: 'site-title', collection: 'main' }, { name: 'site-fill', collection: 'design' }, { name: 'site-mark', collection: 'design' }, { name: 'site-gone', collection: 'main' }];
+  assert.deepEqual(projectClasses(layout, { names: [], selectorKeys: [], external }), { available: true, existing: [], selectors: {}, externalPresent: ['site-title', 'site-fill'] });
+  // A collection the editor does not expose cannot prove a class is there.
+  assert.deepEqual(projectClasses({ ...layout, designClassNameCollection: undefined }, { external }), { available: false });
+  // Page-world trust boundary: an unknown collection is refused before any editor property is read for it.
+  const read = [];
+  const watched = new Proxy(layout, { get(target, key) { read.push(key); return target[key]; } });
+  assert.deepEqual(projectClasses(watched, { external: [{ name: 'x', collection: 'constructor' }] }), { available: false });
+  assert.ok(!read.includes('constructorClassNameCollection'), read.join(', '));
+});
+
 test('reports project classes as unavailable when the editor store has no class collection', () => {
   assert.deepEqual(projectClasses({ tree: {} }, { names: ['card'], selectorKeys: [] }), { available: false });
   assert.deepEqual(projectClasses(null, {}), { available: false });

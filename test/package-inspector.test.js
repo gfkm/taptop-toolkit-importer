@@ -75,6 +75,56 @@ test('accepts a fixture-backed Embed behavior package and rejects a non-Embed be
   assert.match(result.errors[0], /tt_embed/);
 });
 
+// Toolkit-built synthetic page using three target-site classes by name.
+const externalPackage = () => JSON.parse(fs.readFileSync(path.join(__dirname, '../fixtures/compatibility/managed-external-page.json'), 'utf8'));
+async function externalErrors(change) {
+  const wrapper = externalPackage();
+  change(wrapper);
+  const result = await inspectPackage({ packageText: JSON.stringify(wrapper) });
+  assert.equal(result.ok, false);
+  return result.errors.join('\n');
+}
+
+test('accepts a package that lists its external classes', async () => {
+  const result = await inspectPackage({ packageText: JSON.stringify(externalPackage()) });
+  assert.equal(result.ok, true, result.errors?.join('\n'));
+});
+
+test('external classes must be a sorted list of { name, collection } without duplicates', async () => {
+  assert.match(await externalErrors(w => { w.externalClasses = { name: 'site-card' }; }), /externalClasses must be an array/);
+  assert.match(await externalErrors(w => { w.externalClasses[0] = 'site-body'; }), /externalClasses\[0\] must be \{ name: <class name>, collection: "main" \| "design" \}/);
+  assert.match(await externalErrors(w => { w.externalClasses[0].collection = 'cm'; }), /externalClasses\[0\] must be/);
+  assert.match(await externalErrors(w => { w.externalClasses[0].extra = true; }), /externalClasses\[0\] must be/);
+  assert.match(await externalErrors(w => { w.externalClasses[0].name = '.site-body'; }), /externalClasses\[0\] must be/);
+  assert.match(await externalErrors(w => { w.externalClasses.reverse(); }), /externalClasses must be sorted by name without duplicates/);
+  assert.match(await externalErrors(w => { w.externalClasses.splice(1, 0, { ...w.externalClasses[0] }); }), /sorted by name without duplicates/);
+});
+
+test('an external class is one clipboard class with no rules and no sync entry', async () => {
+  assert.match(await externalErrors(w => { w.externalClasses.push({ name: 'site-zz', collection: 'main' }); }), /external class main\/site-zz must match exactly one clipboard class, found 0/);
+  assert.match(await externalErrors(w => { w.externalClasses[0].collection = 'design'; }), /external class design\/site-body must match exactly one clipboard class, found 0/);
+  assert.match(await externalErrors(w => { w.syncPackage.classes.push({ ...w.syncPackage.classes[0], name: 'site-card' }); }), /external class site-card is also a managed class in syncPackage/);
+  assert.match(await externalErrors(w => { w.clipboardData.copiedLayout.cmSelectorCollection.map['screen/.site-title:hover'] = { media: 'screen', selectorText: '.demo-card .site-title:hover', rules: {} }; }), /external class site-title has a rule in cmSelectorCollection: \.demo-card \.site-title:hover/);
+  // A longer name that only starts with an external one is not a rule for it.
+  const wrapper = externalPackage();
+  wrapper.clipboardData.copiedLayout.mainSelectorCollection.map['screen/.site-title-x'] = { media: 'screen', selectorText: '.site-title-x', rules: {} };
+  assert.equal((await inspectPackage({ packageText: JSON.stringify(wrapper) })).ok, true);
+});
+
+test('without the external-classes module the inspector refuses every file with a clear error', async () => {
+  const vm = require('node:vm');
+  // The inspector as a browser would load it: no require, no TaptopExternalClasses.
+  const context = { console };
+  context.globalThis = context;
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/lib/package-inspector.js'), 'utf8'), context);
+  for (const text of [JSON.stringify(externalPackage()), packageText()]) {
+    const result = await context.TaptopPackageInspector.inspectPackage({ packageText: text });
+    assert.equal(result.ok, false);
+    assert.equal(result.errors[0], 'IMPORT_MODULE_MISSING: external-classes');
+  }
+});
+
 test('toolbar popup remains a fallback and never asks for a separate assets folder', () => {
   const popup = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'popup.html'), 'utf8');
   const popupScript = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'popup.js'), 'utf8');

@@ -175,3 +175,82 @@ test('a class sync failure stops before insertion with a retryable error', async
   assert.equal(result.error.code, 'CLASS_SYNC_FAILED');
   assert.equal(result.error.retryable, true);
 });
+
+// Toolkit `externalClasses`: target-site classes that layers use by name.
+function externalWrapper() {
+  return { ...wrapper(), externalClasses: [{ name: 'site-body', collection: 'main' }, { name: 'site-title', collection: 'main' }] };
+}
+
+function recordingAdapter(overrides = {}) {
+  const calls = [];
+  const record = (name, value) => async (...args) => { calls.push(name); return typeof value === 'function' ? value(...args) : value; };
+  const fake = adapter({
+    prepareAsset: record('prepare', asset => asset),
+    uploadAsset: record('upload', { image_id: 7 }),
+    syncClasses: record('sync', { applied: 0 }),
+    insertLayer: record('insert', { rootTagId: 'inserted-root' }),
+    insertBehaviorLayer: record('insert-behavior', { rootTagId: 'b' }),
+    confirmBehaviorInserted: record('confirm-behavior', true),
+    ...overrides
+  });
+  return { fake, calls };
+}
+
+test('a missing site class stops the import before any upload, sync or insertion', async () => {
+  const { fake, calls } = recordingAdapter({ missingExternalClasses: async list => { assert.deepEqual(list.map(item => item.name), ['site-body', 'site-title']); return ['site-title']; } });
+  const result = await runImportSession({ wrapper: externalWrapper(), adapter: fake });
+  assert.equal(result.status, 'failed');
+  assert.equal(result.error.code, 'EXTERNAL_CLASSES_MISSING');
+  assert.equal(result.error.message, 'EXTERNAL_CLASSES_MISSING: site-title');
+  assert.deepEqual(result.error.details, { missing: ['site-title'] }, 'the names travel as data, not only in the message');
+  assert.equal(result.error.retryable, false);
+  assert.deepEqual(calls, []);
+});
+
+test('site classes that cannot be checked stop the import before any write', async () => {
+  for (const missingExternalClasses of [undefined, async () => { throw new Error('editor gone'); }, async () => 'yes']) {
+    const { fake, calls } = recordingAdapter({ missingExternalClasses });
+    if (!missingExternalClasses) delete fake.missingExternalClasses;
+    const result = await runImportSession({ wrapper: externalWrapper(), adapter: fake });
+    assert.equal(result.error.code, 'EXTERNAL_CLASSES_UNVERIFIED');
+    assert.deepEqual(calls, []);
+  }
+});
+
+test('a malformed externalClasses declaration is an invalid package, never "no site classes"', async () => {
+  for (const externalClasses of [{ name: 'site-title', collection: 'main' }, 'site-title', null, [{ collection: 'main' }], ['site-title'], [{ name: 'site-title', collection: 'cm' }], [{ name: 'site-b', collection: 'main' }, { name: 'site-a', collection: 'main' }]]) {
+    const { fake, calls } = recordingAdapter({ missingExternalClasses: async () => [] });
+    const result = await runImportSession({ wrapper: { ...wrapper(), externalClasses }, adapter: fake });
+    assert.equal(result.status, 'failed', JSON.stringify(externalClasses));
+    assert.equal(result.error.code, 'EXTERNAL_CLASSES_INVALID');
+    assert.match(result.error.message, /^EXTERNAL_CLASSES_INVALID: externalClasses/);
+    assert.equal(result.error.retryable, false);
+    assert.deepEqual(calls, []);
+  }
+});
+
+test('without the external-classes module the session stops before any write, for every package', async () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const vm = require('node:vm');
+  // The session as a browser would load it: no require, no TaptopExternalClasses.
+  const context = { console };
+  context.globalThis = context;
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/lib/import-session.js'), 'utf8'), context);
+  for (const pkg of [wrapper(), externalWrapper()]) {
+    const { fake, calls } = recordingAdapter({ missingExternalClasses: async () => [] });
+    const result = await context.TaptopImportSession.runImportSession({ wrapper: pkg, adapter: fake });
+    assert.equal(result.error.code, 'SESSION_UNAVAILABLE');
+    assert.equal(result.error.message, 'IMPORT_MODULE_MISSING: external-classes');
+    assert.equal(result.error.retryable, false);
+    assert.deepEqual(calls, []);
+  }
+});
+
+test('present site classes let the import run in the usual order', async () => {
+  const { fake, calls } = recordingAdapter({ missingExternalClasses: async () => [] });
+  const result = await runImportSession({ wrapper: externalWrapper(), adapter: fake });
+  assert.equal(result.status, 'complete');
+  assert.deepEqual(calls, ['prepare', 'upload', 'sync', 'insert']);
+});

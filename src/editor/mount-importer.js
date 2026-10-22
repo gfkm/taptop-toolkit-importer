@@ -35,10 +35,12 @@
     return { filename: result.filename, image_id: Number(result.id), src: result.src, ver_id: Number(versionId), ext: result.ext, image_height: Number(result.height), image_width: Number(result.width), size: Number(result.size) };
   }
 
-  function codedError(code, message, retryable) {
+  // `details` is structured data for the UI, e.g. { missing: [class names] }.
+  function codedError(code, message, retryable, details = undefined) {
     const error = new Error(message);
     error.code = code;
     error.retryable = retryable;
+    if (details !== undefined) error.details = details;
     return error;
   }
 
@@ -68,17 +70,31 @@
     return { ...plan, identity, store };
   }
 
+  // The message is for logs; the UI formats the names from `details`.
+  const refusalMessage = refused => `${refused.code}: ${refused.missing.join(', ')}`;
+  const refusalDetails = refused => ({ missing: [...refused.missing] });
+
+  // Review: same-name project classes are listed for the user's choice
+  // (copy, keep the existing one, update) instead of being decided here.
   async function inspectFile(file) {
     const packageText = await file.text();
     const report = await globalThis.TaptopPackageInspector.inspectPackage({ packageText });
     if (!report.ok) return report;
-    // The package is authoritative in this MVP: show the same update plan
-    // that will actually run, rather than asking the user to choose copies.
-    const { classes } = await planClasses(JSON.parse(packageText), { adopt: 'update', conflicts: 'take' });
-    return { ...report, classes };
+    const plan = await planClasses(JSON.parse(packageText), null);
+    if (plan.refused) return { ...report, ok: false, errors: [refusalMessage(plan.refused)], warnings: [], details: refusalDetails(plan.refused) };
+    return { ...report, classes: plan.classes };
   }
 
-  async function importFile(file, controller, decisions = { adopt: 'update', conflicts: 'take' }) {
+  // The write-time re-check of site classes; the import session calls it before any upload.
+  // `list` is the session's validated declaration list.
+  async function missingExternalClasses(list) {
+    const external = globalThis.TaptopExternalClasses;
+    const check = external.missing(list, await requestRuntime('classes', external.query(list)));
+    if (!check.available) throw new Error('EXTERNAL_CLASSES_UNVERIFIED: Taptop did not report the site classes');
+    return check.missing;
+  }
+
+  async function importFile(file, controller, decisions = { adopt: 'copy', conflicts: 'take' }) {
     const packageText = await file.text();
     const inspection = await globalThis.TaptopPackageInspector.inspectPackage({ packageText });
     if (!inspection.ok) throw codedError('PACKAGE_INVALID', inspection.errors?.[0] || 'Package validation failed', false);
@@ -87,6 +103,7 @@
     catch (error) { throw codedError('EDITOR_UNAVAILABLE', error.message, true); }
     if (!probe?.ok) throw codedError('EDITOR_UNAVAILABLE', probe?.message || 'Taptop editor API is unavailable', true);
     const plan = await planClasses(JSON.parse(packageText), decisions);
+    if (plan.refused) throw codedError(plan.refused.code, refusalMessage(plan.refused), plan.refused.code === 'EXTERNAL_CLASSES_UNVERIFIED', refusalDetails(plan.refused));
     if (plan.resolved?.blockers?.length) throw codedError('CLASS_SYNC_FAILED', 'Class decisions are incomplete', true);
     const pending = globalThis.TaptopImportPlanner.pendingPlans(plan.resolved);
     // Checked before any image is uploaded: such a class would fail the sync later.
@@ -99,7 +116,7 @@
     let applied = [];
     const adapter = {
       async targetProjectFingerprint() { return (await requestRuntime('probe')).fingerprint; },
-      async prepareAsset(asset) { return asset; }, uploadAsset: uploadEmbeddedAsset,
+      async prepareAsset(asset) { return asset; }, uploadAsset: uploadEmbeddedAsset, missingExternalClasses,
       async insertLayer(clipboardData) { return requestRuntime('insert', { clipboardData }); },
       async confirmInserted(rootTagId) { return requestRuntime('confirm', { rootTagId }); },
       async insertBehaviorLayer(clipboardData) { return requestRuntime('insert-behavior', { clipboardData }); },
@@ -139,7 +156,7 @@
     }
     if (result.status !== 'complete') {
       console.warn('[Taptop Toolkit] import failed', result.error);
-      throw codedError(result.error?.code, result.error?.message || 'Import failed', result.error?.retryable);
+      throw codedError(result.error?.code, result.error?.message || 'Import failed', result.error?.retryable, result.error?.details);
     }
     controller.complete(result.receipt);
     return result.receipt;

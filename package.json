@@ -1,6 +1,6 @@
 {
   "name": "taptop-toolkit-importer",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "license": "MIT",
   "description": "Independent Chrome importer for Taptop Toolkit JSON packages",

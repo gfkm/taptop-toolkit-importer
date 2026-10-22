@@ -1,0 +1,385 @@
+{
+  "type": "taptop-enhancer-layer-export",
+  "version": 2,
+  "exportedAt": "2026-10-15T12:22:44.804Z",
+  "sourceUrl": "",
+  "layerName": "synthetic-site/pages/demo",
+  "sourceRevision": "bc408a224e7c652161da06f3dfe8d159ce1ad8a1963850b466cd7f1c0fdc4835",
+  "clipboardData": {
+    "action": "copy",
+    "tagID": "iul8m6nff",
+    "copiedLayout": {
+      "tree": {
+        "version": "3.1.0",
+        "root": "iul8m6nff",
+        "tags": {
+          "iul8m6nff": {
+            "id": "iul8m6nff",
+            "widgetName": "div",
+            "type": "div",
+            "alias": "div",
+            "className": "div",
+            "classNameIds": [
+              "class_ieslffztz",
+              "class_ipsg6y41r"
+            ],
+            "children": [
+              "idunr93q6"
+            ],
+            "can": [
+              "SELECT",
+              "INSERT"
+            ],
+            "dataAccess": 7,
+            "name": "demo-page"
+          },
+          "idunr93q6": {
+            "id": "idunr93q6",
+            "widgetName": "div",
+            "type": "div",
+            "alias": "div",
+            "className": "div",
+            "classNameIds": [
+              "class_ieslffztz",
+              "class_i4tgaj83l",
+              "class_iftldffy6"
+            ],
+            "children": [
+              "in5np6a7o",
+              "ig4ey39zy"
+            ],
+            "can": [
+              "SELECT",
+              "INSERT"
+            ],
+            "dataAccess": 7,
+            "name": "site-card",
+            "parent": "iul8m6nff"
+          },
+          "in5np6a7o": {
+            "id": "in5np6a7o",
+            "widgetName": "text",
+            "type": "text",
+            "alias": "text",
+            "className": "text",
+            "classNameIds": [
+              "class_i1r8j7cvk",
+              "class_iylfvyyh2",
+              "class_ix7kd7jz3"
+            ],
+            "children": [],
+            "can": [
+              "SELECT",
+              "SET_TEXT"
+            ],
+            "dataAccess": 7,
+            "name": "site-title",
+            "parent": "idunr93q6",
+            "data": {
+              "text": {
+                "type": "HTML",
+                "value": "Example heading"
+              }
+            }
+          },
+          "ig4ey39zy": {
+            "id": "ig4ey39zy",
+            "widgetName": "text",
+            "type": "text",
+            "alias": "text",
+            "className": "text",
+            "classNameIds": [
+              "class_i1r8j7cvk",
+              "class_i77s4nyou",
+              "class_i03jhml9z"
+            ],
+            "children": [],
+            "can": [
+              "SELECT",
+              "SET_TEXT"
+            ],
+            "dataAccess": 7,
+            "name": "site-body",
+            "parent": "idunr93q6",
+            "data": {
+              "text": {
+                "type": "HTML",
+                "value": "Example text"
+              }
+            }
+          }
+        },
+        "dataCollection": {
+          "map": {}
+        },
+        "forms": {}
+      },
+      "mainClassNameCollection": {
+        "map": {
+          "class_ieslffztz": {
+            "id": "class_ieslffztz",
+            "value": "div"
+          },
+          "class_ipsg6y41r": {
+            "id": "class_ipsg6y41r",
+            "value": "demo-page"
+          },
+          "class_i4tgaj83l": {
+            "id": "class_i4tgaj83l",
+            "value": "demo-card"
+          },
+          "class_iftldffy6": {
+            "id": "class_iftldffy6",
+            "value": "site-card"
+          },
+          "class_i1r8j7cvk": {
+            "id": "class_i1r8j7cvk",
+            "value": "text"
+          },
+          "class_iylfvyyh2": {
+            "id": "class_iylfvyyh2",
+            "value": "demo-title"
+          },
+          "class_ix7kd7jz3": {
+            "id": "class_ix7kd7jz3",
+            "value": "site-title"
+          },
+          "class_i77s4nyou": {
+            "id": "class_i77s4nyou",
+            "value": "demo-text"
+          },
+          "class_i03jhml9z": {
+            "id": "class_i03jhml9z",
+            "value": "site-body"
+          }
+        },
+        "countMap": {
+          "div": 1,
+          "demo-page": 1,
+          "demo-card": 1,
+          "site-card": 1,
+          "text": 1,
+          "demo-title": 1,
+          "site-title": 1,
+          "demo-text": 1,
+          "site-body": 1
+        },
+        "sortMap": {
+          "class_ieslffztz": "class_ipsg6y41r",
+          "class_ipsg6y41r": "class_i4tgaj83l",
+          "class_i4tgaj83l": "class_iftldffy6",
+          "class_iftldffy6": "class_i1r8j7cvk",
+          "class_i1r8j7cvk": "class_iylfvyyh2",
+          "class_iylfvyyh2": "class_ix7kd7jz3",
+          "class_ix7kd7jz3": "class_i77s4nyou",
+          "class_i77s4nyou": "class_i03jhml9z",
+          "class_i03jhml9z": ""
+        },
+        "head": {
+          "id": "class_ieslffztz",
+          "value": "div"
+        }
+      },
+      "designClassNameCollection": {
+        "map": {},
+        "countMap": {},
+        "sortMap": {}
+      },
+      "mainSelectorCollection": {
+        "map": {
+          "screen/.demo-card": {
+            "media": "screen",
+            "selectorText": ".demo-card",
+            "rules": {
+              "width": {
+                "name": "width",
+                "value": "auto",
+                "isCustom": false,
+                "serializeValue": "auto",
+                "number": 0,
+                "unit": "auto"
+              }
+            }
+          },
+          "screen/.demo-page": {
+            "media": "screen",
+            "selectorText": ".demo-page",
+            "rules": {
+              "display": {
+                "name": "display",
+                "value": "block",
+                "isCustom": false,
+                "serializeValue": "block"
+              },
+              "width": {
+                "name": "width",
+                "value": "auto",
+                "isCustom": false,
+                "serializeValue": "auto",
+                "number": 0,
+                "unit": "auto"
+              }
+            }
+          },
+          "screen/.demo-text": {
+            "media": "screen",
+            "selectorText": ".demo-text",
+            "rules": {
+              "color": {
+                "name": "color",
+                "value": "#222222",
+                "isCustom": false,
+                "serializeValue": "#222222"
+              },
+              "display": {
+                "name": "display",
+                "value": "block",
+                "isCustom": false,
+                "serializeValue": "block"
+              }
+            }
+          },
+          "screen/.demo-title": {
+            "media": "screen",
+            "selectorText": ".demo-title",
+            "rules": {
+              "display": {
+                "name": "display",
+                "value": "block",
+                "isCustom": false,
+                "serializeValue": "block"
+              }
+            }
+          }
+        }
+      },
+      "designSelectorCollection": {
+        "map": {}
+      },
+      "cmSelectorCollection": {
+        "map": {}
+      },
+      "animationSelectorCollection": {
+        "map": {}
+      }
+    },
+    "isElementInCollection": false,
+    "hasQuantityInSubtree": false,
+    "isElementInOrderSummary": false,
+    "isElementInShop": false
+  },
+  "syncPackage": {
+    "schemaVersion": 1,
+    "namespace": "synthetic-site",
+    "componentKey": "synthetic-site/pages/demo",
+    "classes": [
+      {
+        "stableKey": "synthetic-site/class/demo-card",
+        "name": "demo-card",
+        "collection": "main",
+        "ownedRules": {
+          "main": {
+            "screen/.demo-card": {
+              "width": {
+                "name": "width",
+                "value": "auto",
+                "isCustom": false,
+                "serializeValue": "auto",
+                "number": 0,
+                "unit": "auto"
+              }
+            }
+          }
+        }
+      },
+      {
+        "stableKey": "synthetic-site/class/demo-page",
+        "name": "demo-page",
+        "collection": "main",
+        "ownedRules": {
+          "main": {
+            "screen/.demo-page": {
+              "display": {
+                "name": "display",
+                "value": "block",
+                "isCustom": false,
+                "serializeValue": "block"
+              },
+              "width": {
+                "name": "width",
+                "value": "auto",
+                "isCustom": false,
+                "serializeValue": "auto",
+                "number": 0,
+                "unit": "auto"
+              }
+            }
+          }
+        }
+      },
+      {
+        "stableKey": "synthetic-site/class/demo-text",
+        "name": "demo-text",
+        "collection": "main",
+        "ownedRules": {
+          "main": {
+            "screen/.demo-text": {
+              "color": {
+                "name": "color",
+                "value": "#222222",
+                "isCustom": false,
+                "serializeValue": "#222222"
+              },
+              "display": {
+                "name": "display",
+                "value": "block",
+                "isCustom": false,
+                "serializeValue": "block"
+              }
+            }
+          }
+        }
+      },
+      {
+        "stableKey": "synthetic-site/class/demo-title",
+        "name": "demo-title",
+        "collection": "main",
+        "ownedRules": {
+          "main": {
+            "screen/.demo-title": {
+              "display": {
+                "name": "display",
+                "value": "block",
+                "isCustom": false,
+                "serializeValue": "block"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "instances": [
+      {
+        "stableKey": "synthetic-site/pages/demo/instance",
+        "rootLogicalNodeKey": "demo-page-1"
+      }
+    ],
+    "sourceRevision": "bc408a224e7c652161da06f3dfe8d159ce1ad8a1963850b466cd7f1c0fdc4835",
+    "revision": "4da4c52558326c4ae8e4a0864c563da5c0bdec42cd3896865827b6c92b44c83c"
+  },
+  "embeddedAssets": [],
+  "externalClasses": [
+    {
+      "name": "site-body",
+      "collection": "main"
+    },
+    {
+      "name": "site-card",
+      "collection": "main"
+    },
+    {
+      "name": "site-title",
+      "collection": "main"
+    }
+  ]
+}

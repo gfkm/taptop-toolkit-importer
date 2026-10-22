@@ -71,6 +71,29 @@ test('adopting an existing class overwrites it from the file and binds it for ne
   assert.equal(next.blockers.length, 0);
 });
 
+test('keeping the existing project class syncs nothing for it and never binds it to the file', () => {
+  const pkg = syncPackage([packageClass('card', { 'screen/.card': { color: '#111111' } }), packageClass('faq', { 'screen/.faq': { 'padding-top': '160px' } })]);
+  const observed = { 'site/page/class/card': { id: 'class_card', name: 'card', collection: 'main', rules: { main: { 'screen/.card': { color: { value: '#222222' } } } } }, 'site/page/class/faq': null };
+  const preview = sync.previewClassSync({ targetKey: 't:design:1:version:2', packageData: pkg, receipt: null, observed });
+  const kept = sync.useExisting(preview, new Set(['site/page/class/card']));
+  assert.deepEqual(kept.plans.map(plan => plan.classAction.type), ['use-existing', 'create']);
+  assert.equal(kept.plans[0].classAction.targetClassId, 'class_card');
+  assert.equal(kept.plans[0].propertyPlan, null);
+  assert.deepEqual(kept.blockers, []);
+  assert.equal(preview.plans[0].classAction.type, 'adopt-required', 'input stays unchanged');
+  const summary = sync.summarize(kept);
+  assert.deepEqual(summary.existing, ['card']);
+  assert.deepEqual(summary.adopt, []);
+  assert.deepEqual(sync.resolvePlans(kept, { conflicts: 'take' }).blockers, []);
+  // Only the created class is bound; the kept one stays the project's own.
+  const receipt = sync.nextReceipt({ preview: kept, packageData: pkg, applied: [{ stableKey: 'site/page/class/faq', targetClassId: 'class_faq' }] });
+  assert.deepEqual(receipt.classBindings.map(binding => binding.stableKey), ['site/page/class/faq']);
+  // An earlier binding of a kept class (bound by another import) is left as it was.
+  const earlier = { stableKey: 'site/page/class/card', targetClassId: 'class_card', name: 'card', collection: 'main', ownedPaths: [], baseline: {} };
+  const kept2 = sync.nextReceipt({ preview: kept, packageData: pkg, receipt: { ...receipt, classBindings: [earlier, ...receipt.classBindings] }, applied: [{ stableKey: 'site/page/class/faq', targetClassId: 'class_faq' }] });
+  assert.deepEqual(kept2.classBindings.find(binding => binding.stableKey === 'site/page/class/card'), earlier);
+});
+
 test('a bound class deleted in Taptop is created again', () => {
   const v1 = packageClass('faq', { 'screen/.faq': { 'padding-top': '160px' } });
   const receipt = { schemaVersion: 1, targetKey: 't:design:1:version:2', namespace: 'site', componentKey: 'site/page', packageRevision: 'b'.repeat(64), classBindings: [{ stableKey: v1.stableKey, targetClassId: 'class_gone', name: 'faq', collection: 'main', ownedPaths: [], baseline: {} }], instanceBindings: [] };

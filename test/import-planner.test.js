@@ -83,6 +83,87 @@ test('a bound class renamed in Taptop keeps its new name in the pasted block', a
   assert.equal(result.wrapper.clipboardData.copiedLayout.tree.tags.t1.name, 'banner');
 });
 
+test('«use existing» keeps the layer on the project class and syncs nothing for it', async () => {
+  const projectClasses = { card: { id: 'c-card', rules: { color: { value: '#222222' } } } };
+  const result = await planImport({ wrapper: wrapper(), decisions: { adopt: 'existing', conflicts: 'take' }, targetKey: TARGET, ...project(projectClasses) });
+  assert.deepEqual(result.classes.existing, ['card']);
+  assert.deepEqual(result.classes.adopt, []);
+  assert.deepEqual(result.classes.copies, []);
+  assert.deepEqual(result.classes.created, ['hero']);
+  assert.deepEqual(result.classes.updated, []);
+  assert.deepEqual(result.resolved.blockers, []);
+  assert.deepEqual(pendingPlans(result.resolved).map(plan => plan.name), ['hero']);
+  const layout = result.wrapper.clipboardData.copiedLayout;
+  assert.equal(layout.tree.tags.t2.name, 'card');
+  assert.equal(layout.mainClassNameCollection.map.b.value, 'card');
+  assert.equal(layout.mainSelectorCollection.map['screen/.card'], undefined, 'the pasted block carries no rules for the kept class');
+  assert.ok(layout.mainSelectorCollection.map['screen/.hero']);
+  // The receipt binds only what this file created; the kept class stays unowned.
+  const receipt = sync.nextReceipt({ preview: result.resolved, packageData: result.wrapper.syncPackage, receipt: result.receipt, applied: [{ stableKey: 'demo/page/class/hero', targetClassId: 'c-hero' }] });
+  assert.deepEqual(receipt.classBindings.map(binding => binding.stableKey), ['demo/page/class/hero']);
+});
+
+// Same package plus `site-title`, a target-site class used by name with no rules.
+function externalWrapper() {
+  const source = wrapper();
+  const layout = source.clipboardData.copiedLayout;
+  layout.mainClassNameCollection.map.s = { value: 'site-title' };
+  layout.tree.tags.t3 = { name: 'site-title' };
+  source.externalClasses = [{ name: 'site-title', collection: 'main' }];
+  return source;
+}
+
+// Fake project that also answers the external-class query.
+function siteProject(classes, siteClasses) {
+  const base = project(classes);
+  const all = { ...classes, ...siteClasses };
+  const lookup = async query => ({
+    available: true,
+    existing: (query.names || []).filter(name => all[name]),
+    selectors: Object.fromEntries((query.names || []).filter(name => all[name]).map(name => [`screen/.${name}`, { color: '#ff0000' }])),
+    ...(query.external ? { externalPresent: query.external.filter(item => siteClasses[item.name]).map(item => item.name) } : {})
+  });
+  return { observe: base.observe, lookup };
+}
+
+test('a package whose site classes are all in the project never copies or syncs them', async () => {
+  const result = await planImport({ wrapper: externalWrapper(), decisions: { adopt: 'copy', conflicts: 'take' }, targetKey: TARGET, ...siteProject({}, { 'site-title': { id: 'c-site' } }) });
+  assert.equal(result.refused, undefined);
+  assert.deepEqual(result.classes.external, ['site-title']);
+  assert.deepEqual(result.classes.copies, []);
+  assert.ok(result.resolved.plans.every(plan => plan.name !== 'site-title'));
+  assert.equal(result.wrapper.clipboardData.copiedLayout.tree.tags.t3.name, 'site-title');
+  assert.equal(result.wrapper.clipboardData.copiedLayout.mainClassNameCollection.map.s.value, 'site-title');
+});
+
+test('a missing site class refuses the plan before anything is planned to change', async () => {
+  let observed = false;
+  const { lookup } = siteProject({}, {});
+  const result = await planImport({ wrapper: externalWrapper(), decisions: { adopt: 'update', conflicts: 'take' }, targetKey: TARGET, lookup, observe: async () => { observed = true; return {}; } });
+  assert.deepEqual(result.refused, { code: 'EXTERNAL_CLASSES_MISSING', missing: ['site-title'] });
+  assert.equal(result.resolved, null);
+  assert.deepEqual(pendingPlans(result.resolved), []);
+  assert.equal(observed, false);
+});
+
+test('site classes that cannot be checked refuse the plan as unverified', async () => {
+  for (const lookup of [async () => { throw new Error('no runtime'); }, async () => ({ available: false }), async () => ({ available: true, existing: [] })]) {
+    const result = await planImport({ wrapper: externalWrapper(), decisions: null, targetKey: TARGET, lookup, observe: async () => ({}) });
+    assert.deepEqual(result.refused, { code: 'EXTERNAL_CLASSES_UNVERIFIED', missing: ['site-title'] });
+  }
+});
+
+test('a malformed externalClasses declaration refuses the plan as invalid', async () => {
+  // A wrong collection is a malformed file, not an editor that did not answer.
+  for (const externalClasses of [{ name: 'site-title', collection: 'main' }, [{ name: 'site-title', collection: 'cm' }]]) {
+    let looked = false;
+    const result = await planImport({ wrapper: { ...wrapper(), externalClasses }, decisions: { adopt: 'copy' }, targetKey: TARGET, lookup: async () => { looked = true; return { available: true, existing: [] }; }, observe: async () => ({}) });
+    assert.deepEqual(result.refused, { code: 'EXTERNAL_CLASSES_INVALID', missing: [] });
+    assert.equal(result.resolved, null);
+    assert.equal(looked, false);
+  }
+});
+
 test('without the runtime class reader the old copy rule still protects the block', async () => {
   const result = await planImport({ wrapper: wrapper(), decisions: { adopt: 'copy' }, targetKey: TARGET, observe: async () => { throw new Error('no runtime'); }, lookup: async () => ({ available: false }) });
   assert.equal(result.preview, null);

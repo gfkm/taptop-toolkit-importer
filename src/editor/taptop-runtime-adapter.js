@@ -272,18 +272,37 @@
     return '';
   }
 
-  function projectClasses(layout, { names = [], selectorKeys = [] } = {}) {
+  // `external` ([{ name, collection }]) asks which target-site classes exist,
+  // each in its own class collection; the answer is `externalPresent`. A
+  // collection the editor does not expose makes the whole answer unavailable.
+  function projectClasses(layout, { names = [], selectorKeys = [], external } = {}) {
     const classMap = layout?.mainClassNameCollection?.map;
     const selectorMap = layout?.mainSelectorCollection?.map;
     if (!classMap || typeof classMap !== 'object' || !selectorMap || typeof selectorMap !== 'object') return { available: false };
-    const present = new Set(valuesOf(classMap).map(item => item?.value).filter(Boolean));
+    const namesIn = map => new Set(valuesOf(map).map(item => item?.value).filter(Boolean));
+    const present = namesIn(classMap);
     const selectors = {};
     for (const key of selectorKeys) {
       const rules = getFrom(selectorMap, key)?.rules;
       if (!rules || typeof rules !== 'object') continue;
       selectors[key] = Object.fromEntries(entriesOf(rules).map(([property, rule]) => [property, ruleText(rule)]));
     }
-    return { available: true, existing: names.filter(name => present.has(name)), selectors };
+    const result = { available: true, existing: names.filter(name => present.has(name)), selectors };
+    if (Array.isArray(external)) {
+      const byCollection = {};
+      // Page-world trust boundary: only the two known collections are ever
+      // looked up, and the name is checked before any editor property is read.
+      // This mirrors COLLECTIONS in lib/external-classes.js (the package rule),
+      // which is not loaded in the page world.
+      for (const { collection } of external) {
+        if (collection !== 'main' && collection !== 'design') return { available: false };
+        const map = layout?.[`${collection}ClassNameCollection`]?.map;
+        if (!map || typeof map !== 'object') return { available: false };
+        byCollection[collection] ||= namesIn(map);
+      }
+      result.externalPresent = external.filter(item => byCollection[item.collection].has(item.name)).map(item => item.name);
+    }
+    return result;
   }
 
   function classes(query) {

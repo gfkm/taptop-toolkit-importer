@@ -1,8 +1,9 @@
 (function (root, factory) {
-  const api = factory();
+  const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.TaptopPackageInspector = api;
-})(typeof globalThis === 'undefined' ? this : globalThis, function () {
+})(typeof globalThis === 'undefined' ? this : globalThis, function (root) {
+  const externalModule = () => root.TaptopExternalClasses || (typeof require === 'function' ? require('./external-classes.js') : null);
   const SHA_256 = /^[a-f0-9]{64}$/;
   const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
   const MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']);
@@ -70,7 +71,40 @@
     return errors;
   }
 
+  // Target-site classes the layers use by name. Shape, enum, names and order
+  // belong to TaptopExternalClasses (lib/external-classes.js). Checked here
+  // against this package, as the Toolkit preflight does
+  // (system/lib/import-package-preflight.js in the Toolkit fork): each is exactly one
+  // clipboard class in its collection, is not in syncPackage and has no rule
+  // in any selector collection.
+  // Not mirrored: the Toolkit's check that a behavior Embed does not target an
+  // external class (it needs a CSS parser; the producer refuses such packages).
+  const SELECTOR_COLLECTIONS = ['mainSelectorCollection', 'designSelectorCollection', 'cmSelectorCollection', 'animationSelectorCollection'];
+  const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  function inspectExternalClasses(wrapper, external) {
+    const declared = external.declaration(wrapper);
+    if (!declared.valid) return declared.errors;
+    const errors = [];
+    const layout = wrapper.clipboardData?.copiedLayout;
+    const managed = new Set(wrapper.syncPackage.classes.map(item => item?.name));
+    for (const { name, collection } of declared.list) {
+      const matches = Object.values(layout?.[`${collection}ClassNameCollection`]?.map || {}).filter(item => item?.value === name);
+      if (matches.length !== 1) errors.push(`external class ${collection}/${name} must match exactly one clipboard class, found ${matches.length}`);
+      if (managed.has(name)) errors.push(`external class ${name} is also a managed class in syncPackage`);
+      const uses = new RegExp(`\\.${escapeRegex(name)}(?![-_a-zA-Z0-9])`);
+      for (const key of SELECTOR_COLLECTIONS) {
+        for (const entry of Object.values(layout?.[key]?.map || {})) {
+          if (uses.test(entry?.selectorText || '')) errors.push(`external class ${name} has a rule in ${key}: ${entry.selectorText}`);
+        }
+      }
+    }
+    return errors;
+  }
+
   async function inspectPackage({ packageText }) {
+    // Every file is refused when the extension is loaded without it, not only files with site classes.
+    const external = externalModule();
+    if (typeof external?.declaration !== 'function') return error('IMPORT_MODULE_MISSING: external-classes');
     let wrapper;
     try { wrapper = JSON.parse(packageText); } catch { return error('Package must be valid JSON'); }
     if (wrapper?.type !== 'taptop-enhancer-layer-export') return error('Unsupported package type');
@@ -83,6 +117,7 @@
     if (!Array.isArray(packageAssets)) return error('Package embeddedAssets must be an array');
     const errors = [];
     errors.push(...inspectBehaviorPackages(wrapper.behaviorPackages));
+    errors.push(...inspectExternalClasses(wrapper, external));
     const assetKeys = new Set();
     for (const item of packageAssets) {
       if (assetKeys.has(item?.stableKey)) errors.push(`Duplicate embedded asset stableKey: ${item?.stableKey || '?'}`);

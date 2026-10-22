@@ -14,9 +14,35 @@
   const copy = value => JSON.parse(JSON.stringify(value));
   const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  function packageClassNames(clipboardData) {
+  // `exclude` holds the package's external classes: target-site classes that
+  // layers use by name. They are never conflicts, copies or sync candidates.
+  function packageClassNames(clipboardData, exclude = []) {
+    const skip = new Set(exclude);
     const names = Object.values(clipboardData?.copiedLayout?.mainClassNameCollection?.map || {}).map(item => item?.value).filter(Boolean);
-    return [...new Set(names)].filter(name => !isBase(name));
+    return [...new Set(names)].filter(name => !isBase(name) && !skip.has(name));
+  }
+
+  // «Use existing» for a same-name class: the layers keep the name and the
+  // paste carries no rule that belongs to that class alone (`.card`,
+  // `.card:hover`, `.card` in a media query), in any of the four selector
+  // collections (main, design, cm, animation): the project's class wins
+  // entirely. Selectors that also involve another class stay.
+  const CLASS_TOKEN = /\.(-?[_a-zA-Z][_a-zA-Z0-9-]*)/g;
+  function stripClassRules(wrapper, names) {
+    const result = copy(wrapper);
+    const kept = new Set(names || []);
+    if (!kept.size) return result;
+    const layout = result.clipboardData?.copiedLayout || {};
+    const ownedByKept = selectorText => {
+      const classes = [...String(selectorText || '').matchAll(CLASS_TOKEN)].map(match => match[1]);
+      return classes.length > 0 && classes.every(name => kept.has(name));
+    };
+    for (const key of SELECTOR_COLLECTIONS) {
+      const collection = layout[key];
+      if (!collection?.map) continue;
+      collection.map = Object.fromEntries(Object.entries(collection.map).filter(([, entry]) => !ownedByKept(entry?.selectorText)));
+    }
+    return result;
   }
 
   function ownRules(clipboardData, name) {
@@ -28,8 +54,8 @@
     return result;
   }
 
-  function conflictQuery(clipboardData) {
-    const names = packageClassNames(clipboardData);
+  function conflictQuery(clipboardData, exclude = []) {
+    const names = packageClassNames(clipboardData, exclude);
     const selectorKeys = names.flatMap(name => [...new Set([...Object.keys(ownRules(clipboardData, name)), `screen/.${name}`])]);
     return { names, selectorKeys };
   }
@@ -45,9 +71,9 @@
     return true;
   }
 
-  function findConflicts(clipboardData, snapshot) {
+  function findConflicts(clipboardData, snapshot, exclude = []) {
     const result = { available: Boolean(snapshot?.available), added: [], reused: [], conflicts: [] };
-    const names = packageClassNames(clipboardData);
+    const names = packageClassNames(clipboardData, exclude);
     if (!result.available) return { ...result, total: names.length };
     const existing = new Set(snapshot.existing || []);
     for (const name of names) {
@@ -118,5 +144,5 @@
     return result;
   }
 
-  return { conflictQuery, findConflicts, renameQuery, planRenames, applyClassRenames, packageClassNames };
+  return { conflictQuery, findConflicts, renameQuery, planRenames, applyClassRenames, packageClassNames, stripClassRules };
 });

@@ -4,31 +4,43 @@ const path = require('node:path');
 const test = require('node:test');
 
 const manifestPath = path.join(__dirname, '..', 'src', 'manifest.json');
+// The Taptop editor runs on *.taptop.site. A project's own domain is never listed here: the person grants it at
+// runtime from the popup (optional_host_permissions) and the background registers the content script for it.
+const EDITOR_URLS = ['https://*.taptop.site/-/cms/v1/mosaic/*'];
 
 test('automatically mounts only in the narrow Taptop editor URL', () => {
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.action.default_popup, 'popup/popup.html');
-  assert.deepEqual(manifest.host_permissions, ['https://*.taptop.site/-/cms/v1/mosaic/*']);
+  assert.deepEqual(manifest.host_permissions, EDITOR_URLS);
   assert.deepEqual(manifest.content_scripts, [{
-    matches: ['https://*.taptop.site/-/cms/v1/mosaic/*'],
+    matches: EDITOR_URLS,
     js: ['editor/auto-mount.js'],
     run_at: 'document_idle'
   }]);
   assert.deepEqual(manifest.permissions, ['activeTab', 'scripting']);
+  // Nothing beyond Taptop is granted at install; one https origin at a time is requested at the person's click.
+  assert.deepEqual(manifest.optional_host_permissions, ['https://*/*']);
   assert.equal(manifest.background?.service_worker, 'background.js');
   assert.equal(fs.existsSync(path.join(__dirname, '..', 'src', manifest.background.service_worker)), true);
   assert.equal(fs.existsSync(path.join(__dirname, '../src/editor/auto-mount.js')), true);
 });
 
-test('exposes only the font and dialog sheet to Taptop editor pages', () => {
+test('exposes only the font and dialog sheet, on https pages, through the per-session dynamic URL', () => {
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  // The matches cannot follow a runtime grant, so they cover every https origin the person may allow.
   assert.deepEqual(manifest.web_accessible_resources, [{
     resources: ['fonts/InterVariable.woff2', 'editor/import-ui.css'],
-    matches: ['https://*.taptop.site/*'],
+    matches: ['https://*/*'],
     use_dynamic_url: true
   }]);
+});
+
+test('the manifest names no project domain', () => {
+  const manifest = fs.readFileSync(manifestPath, 'utf8');
+  const hosts = [...manifest.matchAll(/https:\/\/([^/"]+)\//g)].map(match => match[1]);
+  assert.deepEqual([...new Set(hosts)].sort(), ['*', '*.taptop.site']);
 });
 
 test('manifest points to real PNG icons at every toolbar size', () => {

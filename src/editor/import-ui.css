@@ -162,6 +162,12 @@
 .tt-segment-option { height: 28px; margin: 0; padding: 0 12px; border: 0; border-radius: var(--radius-4xl); background: transparent; color: var(--muted-foreground); font: 500 13px/1 'TT Inter', ui-sans-serif, system-ui, sans-serif; white-space: nowrap; cursor: pointer; outline: none; transition: background var(--duration), color var(--duration); }
 .tt-segment-option:hover { color: var(--foreground); }
 .tt-segment-option:focus-visible { box-shadow: 0 0 0 3px var(--ring); }
+/* Three options do not fit next to the label: the segment takes its own row, options share it equally.
+   Measured 2026-10-16 (headless Edge): «Существующие» needs 114px with 12px sides and overflowed below a
+   ~420px dialog (browser zoom, docked DevTools); 8px sides keep it whole longer, then it ends in an ellipsis. */
+.tt-choice[data-stacked] { grid-template-columns: minmax(0, 1fr); }
+.tt-choice[data-stacked] .tt-segment { display: flex; }
+.tt-choice[data-stacked] .tt-segment-option { flex: 1 1 0; min-width: 0; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; }
 .tt-segment-option[aria-checked="true"] { background: var(--background); color: var(--foreground); box-shadow: 0 1px 2px var(--dialog-ring); }
 
 /* Progress ring */

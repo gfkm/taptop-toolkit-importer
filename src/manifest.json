@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Taptop Toolkit Importer",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Проверяет JSON-пакеты Taptop Toolkit и запускает импорт из редактора.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -15,6 +15,9 @@
   ],
   "host_permissions": [
     "https://*.taptop.site/-/cms/v1/mosaic/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
   ],
   "content_scripts": [
     {
@@ -34,7 +37,7 @@
         "editor/import-ui.css"
       ],
       "matches": [
-        "https://*.taptop.site/*"
+        "https://*/*"
       ],
       "use_dynamic_url": true
     }

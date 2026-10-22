@@ -155,12 +155,26 @@
     return { schemaVersion: 1, ...identity, packageRevision: packageData.revision, plans, blockers: plans.flatMap(blockersFor) };
   }
 
+  // The user chose to keep these same-name project classes as they are: the
+  // layers use them by name, nothing is written to them and they are not
+  // bound to the file, so a later import asks again instead of overwriting.
+  function useExisting(preview, stableKeys) {
+    const keep = new Set(stableKeys || []);
+    const next = clone(preview);
+    next.plans = next.plans.map(plan => (plan.classAction.type === 'adopt-required' && keep.has(plan.stableKey)
+      ? { stableKey: plan.stableKey, name: plan.name, collection: plan.collection, classAction: { type: 'use-existing', targetClassId: plan.classAction.targetClassId, name: plan.classAction.name }, propertyPlan: null }
+      : plan));
+    next.blockers = next.plans.flatMap(blockersFor);
+    return next;
+  }
+
   const propertyOf = path => decodeRulePath(path).property;
   function summarize(preview) {
-    const summary = { created: [], updated: [], unchanged: [], adopt: [], conflicts: [] };
+    const summary = { created: [], updated: [], unchanged: [], adopt: [], conflicts: [], existing: [] };
     for (const plan of preview.plans) {
       if (plan.classAction.type === 'create') summary.created.push(plan.name);
       else if (plan.classAction.type === 'adopt-required') summary.adopt.push(plan.name);
+      else if (plan.classAction.type === 'use-existing') summary.existing.push(plan.name);
       else {
         const properties = [...new Set(plan.propertyPlan.operations.map(operation => propertyOf(operation.path)))];
         const conflicts = [...new Set(plan.propertyPlan.conflicts.map(conflict => propertyOf(conflict.path)))];
@@ -214,6 +228,8 @@
     const bindings = new Map((receipt?.classBindings || []).map(binding => [binding.stableKey, clone(binding)]));
     const appliedByKey = new Map(applied.map(item => [item.stableKey, item]));
     for (const plan of preview.plans) {
+      // A class kept as the project's own is never owned by this file.
+      if (plan.classAction.type === 'use-existing') continue;
       const result = appliedByKey.get(plan.stableKey);
       const targetClassId = result?.targetClassId || plan.classAction.targetClassId;
       if (!targetClassId) throw new Error(`No target class for ${plan.stableKey}`);
@@ -276,6 +292,6 @@
 
   return {
     encodeRulePath, decodeRulePath, flattenRules, comparable, planPropertyMerge, buildClassSyncPlan,
-    previewClassSync, summarize, resolvePlans, adopt, nextReceipt, bindRoot, targetKeyFor, createReceiptStore
+    previewClassSync, useExisting, summarize, resolvePlans, adopt, nextReceipt, bindRoot, targetKeyFor, createReceiptStore
   };
 });

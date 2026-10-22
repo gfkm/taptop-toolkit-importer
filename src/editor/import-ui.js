@@ -42,7 +42,23 @@
     return `${(size / 1024 / 1024).toFixed(1).replace('.', ',')} МБ`;
   }
 
-  function describeInvalidFile(fileName, message) {
+  // details.missing (from the engine, never parsed from a message) → ".a, .b";
+  // a long list is cut after five names.
+  const NAMES_SHOWN = 5;
+  const missingNames = details => (Array.isArray(details?.missing) ? details.missing.filter(name => typeof name === 'string' && name) : []);
+  function classList(names) {
+    const shown = names.slice(0, NAMES_SHOWN).map(name => `.${name}`).join(', ');
+    return names.length > NAMES_SHOWN ? `${shown} и ещё ${names.length - NAMES_SHOWN}` : shown;
+  }
+
+  // Review only: nothing was attempted yet, so no «ничего не добавлено» here.
+  function describeInvalidFile(fileName, message, details = null) {
+    if (/^EXTERNAL_CLASSES_MISSING/.test(message || '')) {
+      const names = missingNames(details);
+      return names.length ? `в проекте нет классов сайта: ${classList(names)}.` : 'в проекте нет нужных классов сайта.';
+    }
+    if (/^EXTERNAL_CLASSES_UNVERIFIED/.test(message || '')) return 'не удалось проверить классы сайта в проекте. Обновите страницу.';
+    if (/^IMPORT_MODULE_MISSING/.test(message || '')) return 'расширение загрузилось не полностью. Обновите страницу.';
     if (!/\.json$/i.test(fileName || '')) return 'нужен JSON из Toolkit.';
     if (/valid JSON/i.test(message || '')) return 'файл повреждён или это не JSON.';
     if (/unsupported package type/i.test(message || '')) return 'нужен JSON из Toolkit.';
@@ -72,8 +88,13 @@
       const match = /did not apply class (\S+): \S+ \S+ \S+ ([a-z-]+):/.exec(state.message || '');
       return match ? `Не удалось обновить класс .${match[1]} (${match[2]}).` : 'Не удалось обновить классы.';
     }
+    if (state.errorCode === 'EXTERNAL_CLASSES_MISSING') {
+      const names = missingNames(state.details);
+      return names.length ? `В проекте нет классов сайта: ${classList(names)}.` : 'В проекте нет нужных классов сайта.';
+    }
+    if (state.errorCode === 'EXTERNAL_CLASSES_UNVERIFIED') return 'Не удалось проверить классы сайта. Обновите страницу.';
     if (state.errorCode === 'EDITOR_UNAVAILABLE') return 'Редактор Taptop не ответил. Обновите страницу.';
-    if (state.errorCode === 'BINDING_FAILED' || state.errorCode === 'PACKAGE_INVALID') return 'Файл экспорта повреждён.';
+    if (state.errorCode === 'BINDING_FAILED' || state.errorCode === 'PACKAGE_INVALID' || state.errorCode === 'EXTERNAL_CLASSES_INVALID') return 'Файл экспорта повреждён.';
     return 'Что-то пошло не так.';
   }
 
@@ -81,7 +102,7 @@
     const summary = state.report?.summary || {};
     const nodes = count(summary.nodes);
     const assets = count(summary.assets);
-    const classes = { created: [], updated: [], unchanged: [], adopt: [], conflicts: [], copies: [], ...(state.report?.classes || { available: false, total: count(summary.classes) }) };
+    const classes = { created: [], updated: [], unchanged: [], adopt: [], conflicts: [], copies: [], external: [], ...(state.report?.classes || { available: false, total: count(summary.classes) }) };
     const total = classes.total ?? classes.created.length + classes.updated.length + classes.unchanged.length + classes.adopt.length + classes.conflicts.length;
     const rows = [{ id: 'layers', label: 'Слои', icon: 'layers', value: `${nodes} ${isOne(nodes) ? 'добавится' : 'добавятся'}`, items: [], note: '' }];
     if (total > 0) {
@@ -110,10 +131,13 @@
         const chips = list => list.map(item => typeof item === 'string' ? { name: item, hint: '' } : item);
         row.groups = [
           { id: 'conflicts', label: 'Изменены вами', tone: 'update', note: 'Ваши правки заменятся значениями из файла.', chips: chips(classes.conflicts.map(item => ({ name: item.name, hint: item.properties.join(', ') }))) },
-          { id: 'adopt', label: 'Уже есть в проекте', tone: 'update', note: 'Стили из файла заменят текущие.', chips: chips(classes.adopt) },
+          // What happens to them is the choice below the list.
+          { id: 'adopt', label: 'Уже есть в проекте', tone: 'update', note: 'В проекте есть класс с таким именем.', chips: chips(classes.adopt) },
           { id: 'copies', label: 'Копиями', tone: 'update', note: 'Класс с таким именем есть в проекте, блок получит свою копию.', chips: chips(classes.copies.map(item => ({ name: `${item.name} → ${item.copy}`, hint: '' }))) },
           { id: 'updated', label: classes.updated.length === 1 ? 'Обновится' : 'Обновятся', tone: 'new', chips: chips(classes.updated.map(item => ({ name: item.name, hint: item.properties.join(', ') }))) },
           { id: 'created', label: classes.created.length === 1 ? 'Новый' : 'Новые', tone: 'added', chips: chips(classes.created) },
+          // Site classes the file requires, named: above the count-only group so they stay in view.
+          { id: 'external', label: 'Классы сайта', tone: 'reused', note: 'Берутся из проекта, файл их не меняет.', chips: chips(classes.external) },
           // Unchanged classes are only counted: listing them adds noise.
           { id: 'unchanged', label: 'Без изменений', tone: 'reused', chips: [], count: classes.unchanged.length }
         ].map(group => ({ ...group, count: group.count ?? group.chips.length })).filter(group => group.count);
@@ -124,10 +148,29 @@
     return rows;
   }
 
-  // This MVP treats the JSON package as the source of truth. Existing
-  // same-name classes are updated automatically; copies are not offered.
-  function reviewChoices() {
-    return [];
+  // A same-name project class that this file did not create is never changed
+  // without the user's choice. Copy is the default: it changes neither the
+  // project's class nor the look of the imported block.
+  const ADOPT_OPTIONS = [
+    { value: 'copy', label: 'Копиями', hint: 'Блок получит свои копии этих классов с номером в имени.' },
+    { value: 'existing', label: 'Существующие', hint: 'Использовать существующие: блок возьмёт стили этих классов из проекта, файл их не изменит.' },
+    { value: 'update', label: 'Обновить', hint: 'Стили из файла заменят эти классы во всём проекте.' }
+  ];
+  const adoptChoice = state => (ADOPT_OPTIONS.find(option => option.value === state.decisions?.adopt) || ADOPT_OPTIONS[0]);
+
+  function reviewChoices(state) {
+    const classes = state.report?.classes;
+    if (!classes?.available || !classes.adopt?.length) return [];
+    const chosen = adoptChoice(state);
+    return [{
+      id: 'adopt', label: 'Классы с тем же именем', value: chosen.value, hint: chosen.hint, stacked: true,
+      options: ADOPT_OPTIONS.map(({ value, label }) => ({ value, label }))
+    }];
+  }
+
+  // What the import runs with. Property conflicts keep the file values, as before.
+  function importDecisions(state) {
+    return { adopt: adoptChoice(state).value, conflicts: 'take' };
   }
 
   // Places the launcher in viewport coordinates: same size and left edge as the help circle, `gap` px above it.
@@ -142,7 +185,7 @@
     const base = { phase, closeAllowed: !RUN.has(phase), retryVisible: false };
     if (phase === 'idle' || phase === 'validating' || phase === 'invalid') {
       const dropzone = phase === 'invalid'
-        ? { tone: 'invalid', title: 'Файл не подходит', fileName: state.fileName || '', reason: describeInvalidFile(state.fileName, state.message) }
+        ? { tone: 'invalid', title: 'Файл не подходит', fileName: state.fileName || '', reason: describeInvalidFile(state.fileName, state.message, state.details) }
         : phase === 'validating'
           ? { tone: 'busy', title: 'Проверяем файл…', fileName: state.fileName || '' }
           : { tone: 'default', title: 'Перетащите JSON сюда' };
@@ -244,9 +287,9 @@
         <button class="tt-btn tt-btn-ghost tt-btn-sm" type="button" data-action="replace">Заменить</button>
       </div>
       <div class="tt-changes">${view.rows.map(rowTemplate).join('')}</div>
-      ${view.choices.map(choice => `<div class="tt-choice">
+      ${view.choices.map(choice => `<div class="tt-choice"${choice.stacked ? ' data-stacked' : ''}>
         <span class="tt-choice-label">${esc(choice.label)}</span>
-        <div class="tt-segment" role="radiogroup" aria-label="${esc(choice.label)}">${choice.options.map(option => `<button class="tt-segment-option" type="button" role="radio" aria-checked="${option.value === choice.value}" data-choice="${choice.id}" data-value="${option.value}">${esc(option.label)}</button>`).join('')}</div>
+        <div class="tt-segment" role="radiogroup" aria-label="${esc(choice.label)}">${choice.options.map(option => `<button class="tt-segment-option" type="button" role="radio" aria-checked="${option.value === choice.value}" data-choice="${choice.id}" data-value="${option.value}" title="${esc(option.label)}">${esc(option.label)}</button>`).join('')}</div>
         <span class="tt-choice-hint">${esc(choice.hint)}</span>
       </div>`).join('')}
     </div>
@@ -344,7 +387,7 @@
     function reset() {
       selection += 1;
       fileInput.value = '';
-      setState({ phase: 'idle', file: null, fileName: '', fileSize: 0, report: null, receipt: null, errorCode: null, failedPhase: null, message: '' });
+      setState({ phase: 'idle', file: null, fileName: '', fileSize: 0, report: null, receipt: null, errorCode: null, failedPhase: null, message: '', details: null });
     }
 
     function show() {
@@ -361,22 +404,25 @@
     async function selectFile(file) {
       if (!file) return;
       const token = ++selection;
-      setState({ phase: 'validating', file, fileName: file.name, fileSize: file.size, report: null, message: '', decisions: {} });
-      if (!/\.json$/i.test(file.name)) return setState({ phase: 'invalid', message: describeInvalidFile(file.name) });
+      setState({ phase: 'validating', file, fileName: file.name, fileSize: file.size, report: null, message: '', details: null, decisions: {} });
+      // State keeps the engine message; getImportView translates it once.
+      // Translating here as well turned every reason into «повреждён».
+      if (!/\.json$/i.test(file.name)) return setState({ phase: 'invalid', message: '' });
       try {
         const report = await onFileSelected(file);
         if (token !== selection) return;
         if (report?.ok) setState({ phase: 'ready', report });
-        else setState({ phase: 'invalid', message: describeInvalidFile(file.name, report?.errors?.[0] || report?.message) });
+        else setState({ phase: 'invalid', message: report?.errors?.[0] || report?.message || '', details: report?.details || null });
       } catch (error) {
-        if (token === selection) setState({ phase: 'invalid', message: describeInvalidFile(file.name, error?.message) });
+        if (token === selection) setState({ phase: 'invalid', message: error?.message || '' });
       }
     }
 
     function start(handler) {
       if (typeof handler !== 'function' || !state.file) return;
       setState({ phase: 'preparing', done: 0, total: count(state.report?.summary?.assets), errorCode: null, failedPhase: null });
-      Promise.resolve().then(() => handler(state.file, controller, { adopt: 'update', conflicts: 'take' })).catch(error => controller.fail(error?.message, error?.code, error?.retryable));
+      const decisions = importDecisions(state);
+      Promise.resolve().then(() => handler(state.file, controller, decisions)).catch(error => controller.fail(error?.message, error?.code, error?.retryable, error?.details));
     }
 
     function pickFile() { fileInput.value = ''; fileInput.click(); }
@@ -438,8 +484,8 @@
           win.setTimeout(() => setState({ phase: 'completed', receipt }), 450);
         } else setState({ phase: 'completed', receipt });
       },
-      fail(message, errorCode, retryable) {
-        setState({ phase: 'failed', message, errorCode, retryable, failedPhase: RUN.has(state.phase) ? state.phase : state.failedPhase });
+      fail(message, errorCode, retryable, details = null) {
+        setState({ phase: 'failed', message, errorCode, retryable, details, failedPhase: RUN.has(state.phase) ? state.phase : state.failedPhase });
       },
       destroy() { if (dialog.open) dialog.close(); launcher.remove(); dialog.remove(); }
     };
@@ -447,7 +493,7 @@
     return controller;
   }
 
-  const api = { getImportView, describeInvalidFile, launcherPlacement, createImporterUI };
+  const api = { getImportView, describeInvalidFile, launcherPlacement, importDecisions, createImporterUI };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof globalThis !== 'undefined') globalThis.TaptopImporterUI = api;
 })();

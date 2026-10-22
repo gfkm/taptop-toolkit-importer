@@ -25,7 +25,19 @@
           <p class="hint-text">Откройте проект в редакторе Taptop — синяя кнопка будет справа внизу.</p>
         </div>
       </section>
+      <section class="card" id="domain-access" aria-labelledby="domain-title" hidden>
+        <h2 class="hint-title" id="domain-title">Редактор на домене проекта</h2>
+        <p class="hint-text">Этот проект открывает редактор Taptop на своём домене. Chrome спросит подтверждение и даст расширению доступ только к <strong class="domain-name" id="domain-name"></strong>.</p>
+        <button class="btn btn-primary" id="allow-domain" type="button">Разрешить на этом домене</button>
+        <p class="status" id="domain-status" role="status"></p>
+      </section>
+      <section class="card" id="allowed-domains" aria-labelledby="allowed-title" hidden>
+        <h2 class="hint-title" id="allowed-title">Разрешённые домены</h2>
+        <ul class="domain-list" id="allowed-list"></ul>
+        <p class="status" id="allowed-status" role="status"></p>
+      </section>
     </main>
+    <script src="../lib/editor-host.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

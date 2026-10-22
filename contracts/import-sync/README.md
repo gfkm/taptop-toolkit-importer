@@ -27,7 +27,16 @@ lowercase SHA-256 of the decoded bytes, MIME type, byte length and intrinsic dim
 Image nodes refer to the record through `__pendingUpload.assetKey`. Uploaded media IDs
 belong only in a target-local receipt and must never be copied between projects.
 
-The schemas define storage shape. `lib/import-sync-contract.js` adds invariants
+A version-2 wrapper may list `externalClasses: [{ "name", "collection" }]`, sorted by
+name: classes of the target site's own stylesheet that layers use by name. They have no
+`syncPackage` entry and no rule in any clipboard selector collection; an importer checks
+that each exists in the target before writing anything and never creates, copies or
+updates them. `system/lib/import-package-preflight.js` validates the field and refuses a behavior
+Embed that targets an external class: a CSS rule with it as subject, a `*Class` or
+`*Selector` value of the script's `const config = {…}`, or, without that object, any
+string of the script read as a name or a selector.
+
+The schemas define storage shape. `system/lib/import-sync-contract.js` adds invariants
 that JSON Schema cannot express conveniently here, including unique stable keys,
 decoded byte hashes and baseline ownership. The three-way planner lives in the
 helper because it operates immediately before editor synchronization.
